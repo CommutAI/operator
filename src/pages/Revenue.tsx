@@ -36,11 +36,13 @@ export default function Revenue() {
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
   const [typeDistribution, setTypeDistribution] = useState<TypeDistribution[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState('week');
+  const [dateFilter, setDateFilter] = useState('monthly');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   useEffect(() => {
     fetchRevenueData();
-  }, [dateFilter]);
+  }, [dateFilter, customStartDate, customEndDate]);
 
   const fetchRevenueData = async () => {
     try {
@@ -52,18 +54,37 @@ export default function Revenue() {
       // Apply date filter
       const now = new Date();
       let startDate: Date;
+      let applyDateFilter = true;
       
-      if (dateFilter === 'today') {
-        startDate = new Date(now.setHours(0, 0, 0, 0));
-      } else if (dateFilter === 'week') {
-        startDate = new Date(now.setDate(now.getDate() - 7));
-      } else if (dateFilter === 'month') {
-        startDate = new Date(now.setDate(now.getDate() - 30));
-      } else {
-        startDate = new Date(now.setDate(now.getDate() - 90));
+      switch (dateFilter) {
+        case 'daily':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'weekly':
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case 'monthly':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'yearly':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        case 'custom':
+          startDate = customStartDate ? new Date(customStartDate) : new Date(0);
+          break;
+        case 'all':
+          applyDateFilter = false;
+          startDate = new Date(0);
+          break;
+        default:
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       }
 
-      query = query.gte('created_at', startDate.toISOString());
+      if (applyDateFilter) {
+        const endDate = customEndDate ? new Date(customEndDate) : now;
+        query = query.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString());
+      }
 
       const { data, error } = await query;
 
@@ -117,18 +138,45 @@ export default function Revenue() {
       </div>
 
       {/* Filters */}
-      <div className="glass-card p-4 flex items-center gap-4">
-        <Calendar className="text-white/40" size={20} />
-        <select
-          value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
-          className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-        >
-          <option value="today">Today</option>
-          <option value="week">This Week</option>
-          <option value="month">This Month</option>
-          <option value="quarter">This Quarter</option>
-        </select>
+      <div className="glass-card p-4 flex flex-col md:flex-row gap-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="text-white/40" size={20} />
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+            <option value="custom">Custom Range</option>
+            <option value="all">All Time</option>
+          </select>
+        </div>
+        
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <label className="text-white/60 text-sm mb-1 block">Start Date</label>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-white/60 text-sm mb-1 block">End Date</label>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats */}

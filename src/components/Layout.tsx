@@ -4,12 +4,10 @@ import {
   LayoutDashboard,
   Map,
   Bus,
-  Users,
   Receipt,
   Brain,
   AlertTriangle,
   DollarSign,
-  UserCheck,
   FileText,
   Megaphone,
   ScrollText,
@@ -30,17 +28,13 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
 
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/trips', icon: Bus, label: 'Trip Management' },
     { path: '/live-operations', icon: Map, label: 'Live Operations' },
-    { path: '/passengers', icon: Users, label: 'Passenger Analytics' },
-    { path: '/conductors', icon: UserCheck, label: 'Manage Users' },
     { path: '/transactions', icon: Receipt, label: 'Card Management' },
     { path: '/revenue', icon: DollarSign, label: 'Fare Matrix' },
     { path: '/reports', icon: FileText, label: 'Reports' },
     { path: '/activity-log', icon: ScrollText, label: 'Audit Logs' },
     { path: '/ai-monitoring', icon: Brain, label: 'AI Monitoring' },
-    { path: '/emergency', icon: AlertTriangle, label: 'Emergency' },
-    { path: '/announcements', icon: Megaphone, label: 'Announcements' },
+    { path: '/announcements', icon: Megaphone, label: 'Communications' },
   ];
 
   const isItemActive = (path: string) => location.pathname === path;

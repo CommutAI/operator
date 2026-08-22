@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Brain, AlertTriangle, CheckCircle, Clock, Search, Filter, Bus, User } from 'lucide-react';
+import { Brain, AlertTriangle, CheckCircle, Clock, Search, Filter, Bus, User, Users, TrendingUp } from 'lucide-react';
 
 interface FareIrregularity {
   id: string;
@@ -11,11 +11,22 @@ interface FareIrregularity {
   detected_at: string;
   resolved: boolean;
   resolved_at?: string;
-  notes?: string;
+  description?: string;
+}
+
+interface PassengerCount {
+  id: string;
+  trip_id: string;
+  bus_number: number;
+  route: string;
+  count: number;
+  ai_count: number;
+  recorded_at: string;
 }
 
 export default function AIMonitoring() {
   const [irregularities, setIrregularities] = useState<FareIrregularity[]>([]);
+  const [passengerCounts, setPassengerCounts] = useState<PassengerCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -23,51 +34,105 @@ export default function AIMonitoring() {
 
   useEffect(() => {
     fetchIrregularities();
+    fetchPassengerCounts();
     
-    const subscription = supabase
+    const irregularitySubscription = supabase
       .channel('irregularity-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fare_irregularities' }, fetchIrregularities)
       .subscribe();
 
+    const passengerSubscription = supabase
+      .channel('passenger-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'passenger_counts' }, fetchPassengerCounts)
+      .subscribe();
+
     return () => {
-      subscription.unsubscribe();
+      irregularitySubscription.unsubscribe();
+      passengerSubscription.unsubscribe();
     };
   }, []);
 
-  const fetchIrregularities = async () => {
+  const fetchPassengerCounts = async () => {
     try {
       const { data, error } = await supabase
+        .from('passenger_counts')
+        .select(`
+          id,
+          count,
+          ai_count,
+          recorded_at,
+          trips (
+            id,
+            buses (bus_number, route)
+          )
+        `)
+        .order('recorded_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+
+      const counts: PassengerCount[] = (data || []).map((pc: any) => ({
+        id: pc.id,
+        trip_id: pc.trips?.id,
+        bus_number: pc.trips?.buses?.bus_number || 0,
+        route: pc.trips?.buses?.route || 'Unknown',
+        count: pc.count,
+        ai_count: pc.ai_count,
+        recorded_at: pc.recorded_at,
+      }));
+
+      setPassengerCounts(counts);
+    } catch (error) {
+      console.error('Error fetching passenger counts:', error);
+    }
+  };
+
+  const fetchIrregularities = async () => {
+    try {
+      const { data: irregularitiesData, error: irregularitiesError } = await supabase
         .from('fare_irregularities')
         .select(`
           id,
           type,
+          description,
           detected_at,
           resolved,
           resolved_at,
-          notes,
           trips (
-            buses (bus_number, route),
-            staff_users (full_name)
+            id,
+            conductor_id,
+            buses (bus_number, route)
           )
         `)
         .order('detected_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
+      if (irregularitiesError) throw irregularitiesError;
 
-      const irregularitiesData: FareIrregularity[] = (data || []).map((ir: any) => ({
+      // Fetch all conductors separately
+      const conductorIds = [...new Set((irregularitiesData || []).map((ir: any) => ir.trips?.conductor_id).filter(Boolean))];
+      const { data: conductors } = await supabase
+        .from('staff_users')
+        .select('id, full_name')
+        .in('id', conductorIds);
+
+      const conductorMap = new Map(
+        (conductors || []).map((c: any) => [c.id, c.full_name])
+      );
+
+      const irregularities: FareIrregularity[] = (irregularitiesData || []).map((ir: any) => ({
         id: ir.id,
         type: ir.type,
         bus_number: ir.trips?.buses?.bus_number || 0,
         route: ir.trips?.buses?.route || 'Unknown',
-        conductor_name: ir.trips?.staff_users?.full_name || 'Unknown',
+        conductor_name: conductorMap.get(ir.trips?.conductor_id) || 'Unknown',
         detected_at: ir.detected_at,
         resolved: ir.resolved,
         resolved_at: ir.resolved_at,
-        notes: ir.notes,
+        description: ir.description,
       }));
 
-      setIrregularities(irregularitiesData);
+      setIrregularities(irregularities);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching irregularities:', error);
@@ -127,11 +192,82 @@ export default function AIMonitoring() {
   const unresolvedCount = irregularities.filter(ir => !ir.resolved).length;
   const resolvedCount = irregularities.filter(ir => ir.resolved).length;
 
+  // Passenger analytics calculations
+  const totalPassengers = passengerCounts.reduce((sum, pc) => sum + pc.count, 0);
+  const totalAIPassengers = passengerCounts.reduce((sum, pc) => sum + (pc.ai_count || 0), 0);
+  const discrepancy = totalAIPassengers - totalPassengers;
+
+  const getDiscrepancyColor = (diff: number) => {
+    if (Math.abs(diff) < 5) return 'text-green-400';
+    if (Math.abs(diff) < 10) return 'text-yellow-400';
+    return 'text-red-400';
+  };
+
+  const filteredPassengerCounts = passengerCounts.filter(pc => {
+    return (
+      pc.bus_number.toString().includes(searchTerm) ||
+      pc.route.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">AI Irregularity Monitoring</h1>
-        <p className="text-white/60">Monitor AI-detected fare irregularities</p>
+        <h1 className="text-3xl font-bold text-white mb-2">AI Monitoring</h1>
+        <p className="text-white/60">AI-detected fare irregularities and passenger count verification</p>
+      </div>
+
+      {/* Focused Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-lg bg-red-500/20 text-red-400">
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <p className="text-white/60 text-sm">Active Irregularities</p>
+              <p className="text-white text-2xl font-bold">{unresolvedCount}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-lg bg-blue-500/20 text-blue-400">
+              <Users size={24} />
+            </div>
+            <div>
+              <p className="text-white/60 text-sm">QR Scans</p>
+              <p className="text-white text-2xl font-bold">{totalPassengers}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-lg bg-purple-500/20 text-purple-400">
+              <Brain size={24} />
+            </div>
+            <div>
+              <p className="text-white/60 text-sm">AI Count</p>
+              <p className="text-white text-2xl font-bold">{totalAIPassengers}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-lg bg-white/10 ${getDiscrepancyColor(discrepancy)}`}>
+              <TrendingUp size={24} />
+            </div>
+            <div>
+              <p className="text-white/60 text-sm">Discrepancy</p>
+              <p className={`text-2xl font-bold ${getDiscrepancyColor(discrepancy)}`}>
+                {discrepancy > 0 ? '+' : ''}{discrepancy}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -173,142 +309,151 @@ export default function AIMonitoring() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-red-500/20 text-red-400">
-              <AlertTriangle size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Unresolved</p>
-              <p className="text-white text-2xl font-bold">{unresolvedCount}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-green-500/20 text-green-400">
-              <CheckCircle size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Resolved</p>
-              <p className="text-white text-2xl font-bold">{resolvedCount}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-purple-500/20 text-purple-400">
-              <Brain size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Total Detected</p>
-              <p className="text-white text-2xl font-bold">{irregularities.length}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-blue-500/20 text-blue-400">
-              <Bus size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Resolution Rate</p>
-              <p className="text-white text-2xl font-bold">
-                {irregularities.length > 0 
-                  ? Math.round((resolvedCount / irregularities.length) * 100) 
-                  : 0}%
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Fare Irregularities Section */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <AlertTriangle className="text-red-400" size={20} />
+            AI-Detected Irregularities
+          </h2>
 
-      {/* Irregularity List */}
-      <div className="glass-card p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Detected Irregularities</h2>
-          <span className="text-white/60">{filteredIrregularities.length} records</span>
+          <div className="glass-card p-6">
+            <div className="flex items-center justify-between mb-6">
+              <span className="text-white/60">{filteredIrregularities.length} irregularities</span>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="text-white">Loading irregularities...</div>
+              </div>
+            ) : filteredIrregularities.length === 0 ? (
+              <div className="text-center py-8">
+                <Brain className="text-white/20 mx-auto mb-2" size={48} />
+                <p className="text-white/40">No irregularities found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Type</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Status</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredIrregularities.map((ir) => (
+                      <tr key={ir.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                        <td className="py-4 px-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTypeColor(ir.type)}`}>
+                            {getTypeLabel(ir.type)}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4">
+                          <span className="text-white font-medium">#{ir.bus_number}</span>
+                        </td>
+                        <td className="py-4 px-4 text-white/80">{ir.route}</td>
+                        <td className="py-4 px-4">
+                          {ir.resolved ? (
+                            <span className="px-3 py-1 rounded-full text-xs font-medium text-green-400 bg-green-500/20">
+                              Resolved
+                            </span>
+                          ) : (
+                            <span className="px-3 py-1 rounded-full text-xs font-medium text-red-400 bg-red-500/20">
+                              Active
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-4 px-4">
+                          {!ir.resolved && (
+                            <button
+                              onClick={() => resolveIrregularity(ir.id)}
+                              className="px-3 py-1 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-sm"
+                            >
+                              Resolve
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
-        {loading ? (
-          <div className="text-center py-8">
-            <div className="text-white">Loading irregularities...</div>
+        {/* Passenger Count Verification Section */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Users className="text-blue-400" size={20} />
+            Passenger Count Verification
+          </h2>
+
+          <div className="glass-card p-6">
+            <div className="flex items-center justify-between mb-6">
+              <span className="text-white/60">{filteredPassengerCounts.length} records</span>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="text-white">Loading passenger data...</div>
+              </div>
+            ) : filteredPassengerCounts.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="text-white/20 mx-auto mb-2" size={48} />
+                <p className="text-white/40">No passenger records found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">QR Count</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">AI Count</th>
+                      <th className="text-left py-3 px-4 text-white/60 font-medium">Difference</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPassengerCounts.map((pc) => {
+                      const diff = (pc.ai_count || 0) - pc.count;
+                      
+                      return (
+                        <tr key={pc.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                          <td className="py-4 px-4">
+                            <span className="text-white font-medium">#{pc.bus_number}</span>
+                          </td>
+                          <td className="py-4 px-4 text-white/80">{pc.route}</td>
+                          <td className="py-4 px-4">
+                            <div className="flex items-center gap-2">
+                              <Users size={16} className="text-blue-400" />
+                              <span className="text-white">{pc.count}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="flex items-center gap-2">
+                              <Brain size={16} className="text-purple-400" />
+                              <span className="text-white">{pc.ai_count || 0}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`font-medium ${getDiscrepancyColor(diff)}`}>
+                              {diff > 0 ? '+' : ''}{diff}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        ) : filteredIrregularities.length === 0 ? (
-          <div className="text-center py-8">
-            <Brain className="text-white/20 mx-auto mb-2" size={48} />
-            <p className="text-white/40">No irregularities found</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Type</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Conductor</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Status</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Detected</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredIrregularities.map((ir) => (
-                  <tr key={ir.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                    <td className="py-4 px-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTypeColor(ir.type)}`}>
-                        {getTypeLabel(ir.type)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className="text-white font-medium">#{ir.bus_number}</span>
-                    </td>
-                    <td className="py-4 px-4 text-white/80">{ir.route}</td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-2 text-white/80">
-                        <User size={16} />
-                        <span>{ir.conductor_name}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      {ir.resolved ? (
-                        <span className="px-3 py-1 rounded-full text-xs font-medium text-green-400 bg-green-500/20">
-                          Resolved
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 rounded-full text-xs font-medium text-red-400 bg-red-500/20">
-                          Unresolved
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-2 text-white/60">
-                        <Clock size={16} />
-                        <span>{new Date(ir.detected_at).toLocaleString()}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      {!ir.resolved && (
-                        <button
-                          onClick={() => resolveIrregularity(ir.id)}
-                          className="px-3 py-1 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-sm"
-                        >
-                          Resolve
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

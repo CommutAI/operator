@@ -50,3 +50,9 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(249, 115, 22, 0.7);
 }
+
+/* Fix dropdown white background */
+select option {
+  background-color: #1f2937;
+  color: white;
+}

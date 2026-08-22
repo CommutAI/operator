@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { FileText, Download, Calendar, Filter, DollarSign, Users, Bus } from 'lucide-react';
+import { FileText, Download, Calendar, DollarSign, Users, Bus } from 'lucide-react';
 
 interface ReportData {
   date: string;
@@ -13,42 +13,60 @@ interface ReportData {
 export default function Reports() {
   const [reportData, setReportData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState('month');
-  const [selectedReport, setSelectedReport] = useState('revenue');
+  const [dateRange, setDateRange] = useState('monthly');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   useEffect(() => {
     fetchReportData();
-  }, [dateRange, selectedReport]);
+  }, [dateRange, customStartDate, customEndDate]);
 
   const fetchReportData = async () => {
     try {
       const now = new Date();
       let startDate: Date;
+      let applyDateFilter = true;
       
-      if (dateRange === 'week') {
-        startDate = new Date(now.setDate(now.getDate() - 7));
-      } else if (dateRange === 'month') {
-        startDate = new Date(now.setDate(now.getDate() - 30));
-      } else if (dateRange === 'quarter') {
-        startDate = new Date(now.setDate(now.getDate() - 90));
-      } else {
-        startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+      switch (dateRange) {
+        case 'daily':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'weekly':
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case 'monthly':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'yearly':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        case 'custom':
+          startDate = customStartDate ? new Date(customStartDate) : new Date(0);
+          break;
+        case 'all':
+          applyDateFilter = false;
+          startDate = new Date(0);
+          break;
+        default:
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       }
 
-      const { data: tripsData } = await supabase
-        .from('trips')
-        .select('created_at, status')
-        .gte('created_at', startDate.toISOString());
+      const endDate = customEndDate ? new Date(customEndDate) : now;
 
-      const { data: passengersData } = await supabase
-        .from('passenger_counts')
-        .select('recorded_at, count')
-        .gte('recorded_at', startDate.toISOString());
+      let tripsQuery = supabase.from('trips').select('created_at, status');
+      let passengersQuery = supabase.from('passenger_counts').select('recorded_at, count');
+      let transactionsQuery = supabase.from('transactions').select('created_at, amount, type');
 
-      const { data: transactionsData } = await supabase
-        .from('transactions')
-        .select('created_at, amount, type')
-        .gte('created_at', startDate.toISOString());
+      if (applyDateFilter) {
+        tripsQuery = tripsQuery.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString());
+        passengersQuery = passengersQuery.gte('recorded_at', startDate.toISOString()).lte('recorded_at', endDate.toISOString());
+        transactionsQuery = transactionsQuery.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString());
+      }
+
+      const { data: tripsData } = await tripsQuery;
+      const { data: passengersData } = await passengersQuery;
+      const { data: transactionsData } = await transactionsQuery;
 
       // Group by date
       const groupedData: Record<string, ReportData> = {};
@@ -137,18 +155,45 @@ export default function Reports() {
       </div>
 
       {/* Filters */}
-      <div className="glass-card p-4 flex items-center gap-4">
-        <Calendar className="text-white/40" size={20} />
-        <select
-          value={dateRange}
-          onChange={(e) => setDateRange(e.target.value)}
-          className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-        >
-          <option value="week">Last Week</option>
-          <option value="month">Last Month</option>
-          <option value="quarter">Last Quarter</option>
-          <option value="year">Last Year</option>
-        </select>
+      <div className="glass-card p-4 flex flex-col md:flex-row gap-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="text-white/40" size={20} />
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value)}
+            className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+            <option value="custom">Custom Range</option>
+            <option value="all">All Time</option>
+          </select>
+        </div>
+        
+        {dateRange === 'custom' && (
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <label className="text-white/60 text-sm mb-1 block">Start Date</label>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-white/60 text-sm mb-1 block">End Date</label>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Summary Stats */}
