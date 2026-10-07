@@ -133,8 +133,8 @@ export default function Revenue() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Revenue Monitoring</h1>
-        <p className="text-white/60">Track revenue trends and analytics</p>
+        <h1 className="text-3xl font-bold text-white mb-2">Fare Matrix</h1>
+        <p className="text-white/60">Fare matrix configuration</p>
       </div>
 
       {/* Filters */}
