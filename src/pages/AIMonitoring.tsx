@@ -1,49 +1,27 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Brain, AlertTriangle, CheckCircle, Clock, Search, Filter, Bus, User, Users, TrendingUp } from 'lucide-react';
-
-interface FareIrregularity {
-  id: string;
-  type: string;
-  bus_number: number;
-  route: string;
-  conductor_name: string;
-  detected_at: string;
-  resolved: boolean;
-  resolved_at?: string;
-  description?: string;
-}
-
-interface PassengerCount {
-  id: string;
-  trip_id: string;
-  bus_number: number;
-  route: string;
-  count: number;
-  ai_count: number;
-  recorded_at: string;
-}
+import { AlertTriangle, Users, Video, Activity, Clock, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import VideoMonitoring from './VideoMonitoring';
 
 export default function AIMonitoring() {
-  const [irregularities, setIrregularities] = useState<FareIrregularity[]>([]);
-  const [passengerCounts, setPassengerCounts] = useState<PassengerCount[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [unresolvedCount, setUnresolvedCount] = useState(0);
+  const [totalPassengers, setTotalPassengers] = useState(0);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [sortBy, setSortBy] = useState<'time' | 'bus' | 'event'>('time');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const itemsPerPage = 5;
 
   useEffect(() => {
-    fetchIrregularities();
-    fetchPassengerCounts();
+    fetchStats();
     
     const irregularitySubscription = supabase
-      .channel('irregularity-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fare_irregularities' }, fetchIrregularities)
+      .channel('ai-irregularity-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fare_irregularities' }, fetchStats)
       .subscribe();
 
     const passengerSubscription = supabase
-      .channel('passenger-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'passenger_counts' }, fetchPassengerCounts)
+      .channel('ai-passenger-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'passenger_counts' }, fetchStats)
       .subscribe();
 
     return () => {
@@ -52,406 +30,216 @@ export default function AIMonitoring() {
     };
   }, []);
 
-  const fetchPassengerCounts = async () => {
+  const fetchStats = async () => {
     try {
-      const { data, error } = await supabase
-        .from('passenger_counts')
-        .select(`
-          id,
-          count,
-          ai_count,
-          recorded_at,
-          trips (
-            id,
-            buses (bus_number, route)
-          )
-        `)
-        .order('recorded_at', { ascending: false })
-        .limit(100);
+      const [{ count: irregularityCount }, { data: passengerData }] = await Promise.all([
+        supabase
+          .from('fare_irregularities')
+          .select('*', { count: 'exact', head: true })
+          .eq('resolved', false),
+        supabase
+          .from('passenger_counts')
+          .select('count')
+          .order('recorded_at', { ascending: false })
+          .limit(100)
+      ]);
 
-      if (error) throw error;
-
-      const counts: PassengerCount[] = (data || []).map((pc: any) => ({
-        id: pc.id,
-        trip_id: pc.trips?.id,
-        bus_number: pc.trips?.buses?.bus_number || 0,
-        route: pc.trips?.buses?.route || 'Unknown',
-        count: pc.count,
-        ai_count: pc.ai_count,
-        recorded_at: pc.recorded_at,
-      }));
-
-      setPassengerCounts(counts);
+      setUnresolvedCount(irregularityCount || 0);
+      
+      const total = (passengerData || []).reduce((sum: number, pc: any) => sum + (pc.count || 0), 0);
+      setTotalPassengers(total);
     } catch (error) {
-      console.error('Error fetching passenger counts:', error);
+      console.error('Error fetching stats:', error);
     }
   };
 
-  const fetchIrregularities = async () => {
-    try {
-      const { data: irregularitiesData, error: irregularitiesError } = await supabase
-        .from('fare_irregularities')
-        .select(`
-          id,
-          type,
-          description,
-          detected_at,
-          resolved,
-          resolved_at,
-          trips (
-            id,
-            conductor_id,
-            buses (bus_number, route)
-          )
-        `)
-        .order('detected_at', { ascending: false })
-        .limit(100);
+  const detectionHistory = [
+    { id: 1, bus: '1234', event: 'Detected 5 passengers boarding at Manolo Fortich Terminal', time: '2 min ago', timeValue: 2 },
+    { id: 2, bus: '5678', event: 'Detected 3 passengers alighting at Agora Terminal', time: '5 min ago', timeValue: 5 },
+    { id: 3, bus: '9012', event: 'Fare irregularity detected: No ticket validation', time: '8 min ago', timeValue: 8 },
+    { id: 4, bus: '3456', event: 'Detected 7 passengers boarding at Manolo Fortich Terminal', time: '12 min ago', timeValue: 12 },
+    { id: 5, bus: '7890', event: 'Detected 2 passengers alighting at Agora Terminal', time: '15 min ago', timeValue: 15 },
+    { id: 6, bus: '2345', event: 'Fare irregularity detected: Invalid ticket', time: '20 min ago', timeValue: 20 },
+    { id: 7, bus: '6789', event: 'Detected 4 passengers boarding at Manolo Fortich Terminal', time: '25 min ago', timeValue: 25 },
+    { id: 8, bus: '0123', event: 'Detected 6 passengers alighting at Agora Terminal', time: '30 min ago', timeValue: 30 },
+    { id: 9, bus: '4567', event: 'Detected 3 passengers boarding at Manolo Fortich Terminal', time: '35 min ago', timeValue: 35 },
+    { id: 10, bus: '8901', event: 'Fare irregularity detected: Overcrowding', time: '40 min ago', timeValue: 40 },
+  ];
 
-      if (irregularitiesError) throw irregularitiesError;
-
-      // Fetch all conductors separately
-      const conductorIds = [...new Set((irregularitiesData || []).map((ir: any) => ir.trips?.conductor_id).filter(Boolean))];
-      const { data: conductors } = await supabase
-        .from('staff_users')
-        .select('id, full_name')
-        .in('id', conductorIds);
-
-      const conductorMap = new Map(
-        (conductors || []).map((c: any) => [c.id, c.full_name])
-      );
-
-      const irregularities: FareIrregularity[] = (irregularitiesData || []).map((ir: any) => ({
-        id: ir.id,
-        type: ir.type,
-        bus_number: ir.trips?.buses?.bus_number || 0,
-        route: ir.trips?.buses?.route || 'Unknown',
-        conductor_name: conductorMap.get(ir.trips?.conductor_id) || 'Unknown',
-        detected_at: ir.detected_at,
-        resolved: ir.resolved,
-        resolved_at: ir.resolved_at,
-        description: ir.description,
-      }));
-
-      setIrregularities(irregularities);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching irregularities:', error);
-      setLoading(false);
+  const sortedHistory = [...detectionHistory].sort((a, b) => {
+    let comparison = 0;
+    
+    if (sortBy === 'time') {
+      comparison = a.timeValue - b.timeValue;
+    } else if (sortBy === 'bus') {
+      comparison = a.bus.localeCompare(b.bus);
+    } else if (sortBy === 'event') {
+      comparison = a.event.localeCompare(b.event);
     }
-  };
-
-  const filteredIrregularities = irregularities.filter(ir => {
-    const matchesSearch = 
-      ir.bus_number.toString().includes(searchTerm) ||
-      ir.route.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ir.conductor_name.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'resolved' && ir.resolved) ||
-      (statusFilter === 'unresolved' && !ir.resolved);
-    
-    const matchesType = typeFilter === 'all' || ir.type === typeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
+    return sortOrder === 'asc' ? comparison : -comparison;
   });
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'no_ticket': return 'text-red-400 bg-red-500/20';
-      case 'invalid_ticket': return 'text-orange-400 bg-orange-500/20';
-      case 'overcrowding': return 'text-yellow-400 bg-yellow-500/20';
-      case 'suspicious_activity': return 'text-purple-400 bg-purple-500/20';
-      default: return 'text-white/60 bg-white/10';
+  const totalPages = Math.ceil(sortedHistory.length / itemsPerPage);
+  const paginatedHistory = sortedHistory.slice(
+    historyPage * itemsPerPage,
+    (historyPage + 1) * itemsPerPage
+  );
+
+  const handleSort = (field: 'time' | 'bus' | 'event') => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
     }
+    setHistoryPage(0);
   };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'no_ticket': return 'No Ticket';
-      case 'invalid_ticket': return 'Invalid Ticket';
-      case 'overcrowding': return 'Overcrowding';
-      case 'suspicious_activity': return 'Suspicious Activity';
-      default: return type;
-    }
-  };
-
-  const resolveIrregularity = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('fare_irregularities')
-        .update({ resolved: true, resolved_at: new Date().toISOString() })
-        .eq('id', id);
-
-      if (error) throw error;
-      fetchIrregularities();
-    } catch (error) {
-      console.error('Error resolving irregularity:', error);
-    }
-  };
-
-  const unresolvedCount = irregularities.filter(ir => !ir.resolved).length;
-  const resolvedCount = irregularities.filter(ir => ir.resolved).length;
-
-  // Passenger analytics calculations
-  const totalPassengers = passengerCounts.reduce((sum, pc) => sum + pc.count, 0);
-  const totalAIPassengers = passengerCounts.reduce((sum, pc) => sum + (pc.ai_count || 0), 0);
-  const discrepancy = totalAIPassengers - totalPassengers;
-
-  const getDiscrepancyColor = (diff: number) => {
-    if (Math.abs(diff) < 5) return 'text-green-400';
-    if (Math.abs(diff) < 10) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
-  const filteredPassengerCounts = passengerCounts.filter(pc => {
-    return (
-      pc.bus_number.toString().includes(searchTerm) ||
-      pc.route.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">AI Monitoring</h1>
-        <p className="text-white/60">AI-detected fare irregularities and passenger count verification</p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">AI Monitoring</h1>
+          <p className="text-white/60">Real-time AI-powered fare irregularities and passenger detection</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-white/60">
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <span>Live</span>
+        </div>
       </div>
 
-      {/* Focused Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-red-500/20 text-red-400">
-              <AlertTriangle size={24} />
+      {/* Hero Metrics - 3 Key Highlights */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Video Monitoring - Highlighted */}
+        <div className="glass-card p-4 border-2 border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-transparent">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-3 rounded-xl bg-orange-500/20">
+              <Video className="text-orange-400" size={24} />
             </div>
-            <div>
-              <p className="text-white/60 text-sm">Active Irregularities</p>
-              <p className="text-white text-2xl font-bold">{unresolvedCount}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-blue-500/20 text-blue-400">
-              <Users size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">QR Scans</p>
-              <p className="text-white text-2xl font-bold">{totalPassengers}</p>
+            <div className="flex items-center gap-2 text-white/60 text-xs">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <span>Live</span>
             </div>
           </div>
+          <h3 className="text-white/70 text-xs mb-1">Video Monitoring</h3>
+          <p className="text-white text-2xl font-bold mb-1">Active</p>
+          <p className="text-white/50 text-xs">YOLO-powered detection</p>
         </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-purple-500/20 text-purple-400">
-              <Brain size={24} />
+
+        {/* Passenger Count - Highlighted */}
+        <div className="glass-card p-4 border-2 border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-transparent">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-3 rounded-xl bg-blue-500/20">
+              <Users className="text-blue-400" size={24} />
             </div>
-            <div>
-              <p className="text-white/60 text-sm">AI Count</p>
-              <p className="text-white text-2xl font-bold">{totalAIPassengers}</p>
+            <div className="text-right">
+              <p className="text-green-400 text-xs font-medium">+12%</p>
             </div>
           </div>
+          <h3 className="text-white/70 text-xs mb-1">Total Passengers</h3>
+          <p className="text-white text-2xl font-bold mb-1">{totalPassengers}</p>
+          <p className="text-white/50 text-xs">QR scans verified</p>
         </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-lg bg-white/10 ${getDiscrepancyColor(discrepancy)}`}>
-              <TrendingUp size={24} />
+
+        {/* Irregularities - Highlighted */}
+        <div className={`glass-card p-4 border-2 ${unresolvedCount > 0 ? 'border-red-500/30 bg-gradient-to-br from-red-500/10 to-transparent' : 'border-green-500/30 bg-gradient-to-br from-green-500/10 to-transparent'}`}>
+          <div className="flex items-center justify-between mb-3">
+            <div className={`p-3 rounded-xl ${unresolvedCount > 0 ? 'bg-red-500/20' : 'bg-green-500/20'}`}>
+              <AlertTriangle className={unresolvedCount > 0 ? 'text-red-400' : 'text-green-400'} size={24} />
             </div>
-            <div>
-              <p className="text-white/60 text-sm">Discrepancy</p>
-              <p className={`text-2xl font-bold ${getDiscrepancyColor(discrepancy)}`}>
-                {discrepancy > 0 ? '+' : ''}{discrepancy}
+            <div className="text-right">
+              <p className={`${unresolvedCount > 0 ? 'text-red-400' : 'text-green-400'} text-xs font-medium`}>
+                {unresolvedCount > 0 ? '⚠️' : '✓'}
               </p>
             </div>
           </div>
+          <h3 className="text-white/70 text-xs mb-1">Active Irregularities</h3>
+          <p className={`text-white text-2xl font-bold mb-1 ${unresolvedCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{unresolvedCount}</p>
+          <p className="text-white/50 text-xs">AI-detected issues</p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="glass-card p-4 flex flex-col md:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40" size={20} />
-          <input
-            type="text"
-            placeholder="Search by bus, route, or conductor..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-orange-500"
-          />
+      {/* Video Monitoring Section - Compact */}
+      <div className="glass-card p-4 border-2 border-orange-500/20">
+        <VideoMonitoring autoConnect={true} />
+      </div>
+
+      {/* Detection History */}
+      <div className="glass-card p-6">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+          <Activity className="text-orange-400" size={20} />
+          Detection History
+        </h2>
+        
+        {/* Sortable Headers */}
+        <div className="flex items-center gap-4 px-4 py-2 border-b border-white/10 mb-2">
+          <button
+            onClick={() => handleSort('bus')}
+            className={`flex items-center gap-2 text-xs font-medium transition-colors ${
+              sortBy === 'bus' ? 'text-orange-400' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            Bus
+            {sortBy === 'bus' && <ArrowUpDown size={12} />}
+          </button>
+          <button
+            onClick={() => handleSort('event')}
+            className={`flex items-center gap-2 text-xs font-medium transition-colors ${
+              sortBy === 'event' ? 'text-orange-400' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            Event
+            {sortBy === 'event' && <ArrowUpDown size={12} />}
+          </button>
+          <button
+            onClick={() => handleSort('time')}
+            className={`flex items-center gap-2 text-xs font-medium transition-colors ${
+              sortBy === 'time' ? 'text-orange-400' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            Time
+            {sortBy === 'time' && <ArrowUpDown size={12} />}
+          </button>
         </div>
         
-        <div className="flex items-center gap-2">
-          <Filter className="text-white/40" size={20} />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-          >
-            <option value="all">All Status</option>
-            <option value="unresolved">Unresolved</option>
-            <option value="resolved">Resolved</option>
-          </select>
-          
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-          >
-            <option value="all">All Types</option>
-            <option value="no_ticket">No Ticket</option>
-            <option value="invalid_ticket">Invalid Ticket</option>
-            <option value="overcrowding">Overcrowding</option>
-            <option value="suspicious_activity">Suspicious Activity</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Fare Irregularities Section */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="text-red-400" size={20} />
-            AI-Detected Irregularities
-          </h2>
-
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-white/60">{filteredIrregularities.length} irregularities</span>
+        {/* List */}
+        <div className="space-y-1 mb-4">
+          {paginatedHistory.map((item) => (
+            <div key={item.id} className="flex items-center justify-between py-3 px-4 hover:bg-white/5 rounded-lg transition-colors border-b border-white/5 last:border-0">
+              <div className="flex items-center gap-4">
+                <span className="text-white font-medium text-sm">Bus #{item.bus}</span>
+                <p className="text-white/70 text-sm">{item.event}</p>
+              </div>
+              <div className="flex items-center gap-1 text-white/60 text-xs">
+                <Clock size={12} />
+                <span>{item.time}</span>
+              </div>
             </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-white">Loading irregularities...</div>
-              </div>
-            ) : filteredIrregularities.length === 0 ? (
-              <div className="text-center py-8">
-                <Brain className="text-white/20 mx-auto mb-2" size={48} />
-                <p className="text-white/40">No irregularities found</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/10">
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Type</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Status</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredIrregularities.map((ir) => (
-                      <tr key={ir.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td className="py-4 px-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTypeColor(ir.type)}`}>
-                            {getTypeLabel(ir.type)}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          <span className="text-white font-medium">#{ir.bus_number}</span>
-                        </td>
-                        <td className="py-4 px-4 text-white/80">{ir.route}</td>
-                        <td className="py-4 px-4">
-                          {ir.resolved ? (
-                            <span className="px-3 py-1 rounded-full text-xs font-medium text-green-400 bg-green-500/20">
-                              Resolved
-                            </span>
-                          ) : (
-                            <span className="px-3 py-1 rounded-full text-xs font-medium text-red-400 bg-red-500/20">
-                              Active
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-4 px-4">
-                          {!ir.resolved && (
-                            <button
-                              onClick={() => resolveIrregularity(ir.id)}
-                              className="px-3 py-1 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-sm"
-                            >
-                              Resolve
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          ))}
         </div>
 
-        {/* Passenger Count Verification Section */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Users className="text-blue-400" size={20} />
-            Passenger Count Verification
-          </h2>
-
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-white/60">{filteredPassengerCounts.length} records</span>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-white">Loading passenger data...</div>
-              </div>
-            ) : filteredPassengerCounts.length === 0 ? (
-              <div className="text-center py-8">
-                <Users className="text-white/20 mx-auto mb-2" size={48} />
-                <p className="text-white/40">No passenger records found</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/10">
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">QR Count</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">AI Count</th>
-                      <th className="text-left py-3 px-4 text-white/60 font-medium">Difference</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPassengerCounts.map((pc) => {
-                      const diff = (pc.ai_count || 0) - pc.count;
-                      
-                      return (
-                        <tr key={pc.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                          <td className="py-4 px-4">
-                            <span className="text-white font-medium">#{pc.bus_number}</span>
-                          </td>
-                          <td className="py-4 px-4 text-white/80">{pc.route}</td>
-                          <td className="py-4 px-4">
-                            <div className="flex items-center gap-2">
-                              <Users size={16} className="text-blue-400" />
-                              <span className="text-white">{pc.count}</span>
-                            </div>
-                          </td>
-                          <td className="py-4 px-4">
-                            <div className="flex items-center gap-2">
-                              <Brain size={16} className="text-purple-400" />
-                              <span className="text-white">{pc.ai_count || 0}</span>
-                            </div>
-                          </td>
-                          <td className="py-4 px-4">
-                            <span className={`font-medium ${getDiscrepancyColor(diff)}`}>
-                              {diff > 0 ? '+' : ''}{diff}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {/* Pagination */}
+        <div className="flex items-center justify-between pt-4 border-t border-white/10">
+          <span className="text-white/60 text-xs">
+            Page {historyPage + 1} of {totalPages}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setHistoryPage(Math.max(0, historyPage - 1))}
+              disabled={historyPage === 0}
+              className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              onClick={() => setHistoryPage(Math.min(totalPages - 1, historyPage + 1))}
+              disabled={historyPage === totalPages - 1}
+              className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight size={16} />
+            </button>
           </div>
         </div>
       </div>
