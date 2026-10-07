@@ -2,20 +2,14 @@ import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Map,
-  Bus,
   Receipt,
   Brain,
-  AlertTriangle,
-  DollarSign,
   FileText,
   Megaphone,
-  ScrollText,
   User,
   LogOut,
   Menu,
-  X,
-  Bell
+  X
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boolean) => void }) => {
@@ -28,11 +22,8 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
 
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/live-operations', icon: Map, label: 'Live Operations' },
     { path: '/transactions', icon: Receipt, label: 'Card Management' },
-    { path: '/revenue', icon: DollarSign, label: 'Fare Matrix' },
     { path: '/reports', icon: FileText, label: 'Reports' },
-    { path: '/activity-log', icon: ScrollText, label: 'Audit Logs' },
     { path: '/ai-monitoring', icon: Brain, label: 'AI Monitoring' },
     { path: '/announcements', icon: Megaphone, label: 'Communications' },
   ];
@@ -93,25 +84,9 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
 };
 
 const Header = () => {
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(3);
-
   return (
     <header className="glass-card h-16 flex items-center justify-between px-6 mb-6">
       <div className="flex items-center gap-4">
-        <div className="relative">
-          <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="relative"
-          >
-            <Bell className="text-white hover:text-orange-400 cursor-pointer transition-colors" size={20} />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full text-xs text-white flex items-center justify-center">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
-        </div>
       </div>
       <div className="flex items-center gap-4">
         <div className="text-right">
