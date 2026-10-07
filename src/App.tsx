@@ -14,6 +14,8 @@ import Revenue from './pages/Revenue';
 import Announcements from './pages/Announcements';
 import Reports from './pages/Reports';
 import ActivityLog from './pages/ActivityLog';
+import VideoMonitoring from './pages/VideoMonitoring';
+import LiveMap from './pages/LiveMap';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +51,8 @@ function App() {
               <Route path="announcements" element={<Announcements />} />
               <Route path="reports" element={<Reports />} />
               <Route path="activity-log" element={<ActivityLog />} />
+              <Route path="video-monitoring" element={<VideoMonitoring />} />
+              <Route path="live-map" element={<LiveMap />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
