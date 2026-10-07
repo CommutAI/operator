@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { 
-  Bus, Users, DollarSign, Activity, AlertTriangle, MapPin, Clock, TrendingUp,
-  Receipt, Package, UserCheck, ArrowUpRight, Bell
+import {
+  Bus, Users, DollarSign, Activity, AlertTriangle,
+  Map as MapIcon, TrendingUp, Zap, Navigation, ArrowUp, ArrowDown
 } from 'lucide-react';
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -19,6 +14,32 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default marker icons in Leaflet
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+});
+
+// Hide Leaflet attribution and logo (only once)
+if (!document.getElementById('leaflet-style-override')) {
+  const style = document.createElement('style');
+  style.id = 'leaflet-style-override';
+  style.textContent = `
+    .leaflet-control-attribution {
+      display: none !important;
+    }
+    .leaflet-bottom {
+      display: none !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 interface KPICard {
   title: string;
@@ -26,7 +47,80 @@ interface KPICard {
   subtitle?: string;
   icon: any;
   color: string;
+  trend?: string;
+  highlight?: boolean;
 }
+
+const MapRecenter = ({ center }: { center: [number, number] }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [center, map]);
+
+  return null;
+};
+
+const MapRouteFitter = ({ coordinates }: { coordinates: [number, number][] }) => {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (coordinates.length > 0) {
+      const bounds = L.latLngBounds(coordinates);
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }, [coordinates, map]);
+  
+  return null;
+};
+
+const fetchRouteCoordinates = async (startCoords: [number, number], endCoords: [number, number]): Promise<[number, number][]> => {
+  try {
+    const response = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=geojson`
+    );
+    const data = await response.json();
+    
+    if (data.routes && data.routes[0]) {
+      return data.routes[0].geometry.coordinates.map(
+        (coord: [number, number]) => [coord[1], coord[0]]
+      );
+    }
+  } catch (error) {
+    console.error('Error fetching route:', error);
+  }
+  
+  return [startCoords, endCoords];
+};
+
+const BusMarker = ({ bus }: { bus: any }) => (
+  <Marker position={[bus.lat, bus.lng]}>
+    <Popup>
+      <div className="p-2">
+        <h3 className="font-bold text-gray-800">{bus.plate}</h3>
+        <p className="text-sm text-gray-600">{bus.route}</p>
+        <p className="text-xs text-gray-700 mt-2">
+          {Number(bus.lat).toFixed(6)}, {Number(bus.lng).toFixed(6)}
+        </p>
+        <p className="text-xs text-gray-500 mt-1">
+          Source: {bus.locationSource || 'fallback'}
+        </p>
+        {bus.locationUpdatedAt && (
+          <p className="text-xs text-gray-500">
+            Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
+          </p>
+        )}
+        <div className="flex items-center gap-2 mt-2">
+          <Users size={16} className="text-orange-500" />
+          <span className="text-sm">{bus.passengers} passengers</span>
+        </div>
+        <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+          {bus.status}
+        </span>
+      </div>
+    </Popup>
+  </Marker>
+);
 
 export default function Dashboard() {
   const [kpiData, setKpiData] = useState({
@@ -36,25 +130,23 @@ export default function Dashboard() {
     currentPassengers: 0,
     totalPassengersToday: 0,
     fareCollectedToday: 0,
-    aiPassengerCount: 0,
-    qrPassengerCount: 0,
     activeIrregularities: 0,
     busesOnline: 0,
-    totalConductors: 0,
-    activeConductors: 0,
-    totalBaggageToday: 0,
-    totalTransactionsToday: 0,
-    avgTripDuration: 0,
   });
 
-  const [alerts, setAlerts] = useState<any[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
-  const [passengerData, setPassengerData] = useState<any[]>([]);
-  const [tripData, setTripData] = useState<any[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
-  const [recentActivities, setRecentActivities] = useState<any[]>([]);
-  const [busStatusData, setBusStatusData] = useState<any[]>([]);
-  const [routePerformance, setRoutePerformance] = useState<any[]>([]);
+  const [activeTrips, setActiveTrips] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [mapBuses, setMapBuses] = useState<any[]>([]);
+  const [mapRoutes, setMapRoutes] = useState<any[]>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<Record<string, [number, number][]>>({});
+  const [mapStats, setMapStats] = useState({
+    totalPassengers: 0,
+    activeBuses: 0,
+    totalRoutes: 0,
+  });
+  const [tripsSortColumn, setTripsSortColumn] = useState<'started_at' | 'bus_number' | 'route'>('started_at');
+  const [tripsSortDirection, setTripsSortDirection] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     fetchDashboardData();
@@ -67,7 +159,17 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fare_irregularities' }, () => { void fetchDashboardData(); })
       .subscribe();
 
-    return () => { subscription.unsubscribe(); };
+    const gpsSubscription = supabase
+      .channel('dashboard-gps-channel')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gps_locations' }, () => {
+        fetchLiveMapData();
+      })
+      .subscribe();
+
+    return () => { 
+      subscription.unsubscribe();
+      gpsSubscription.unsubscribe();
+    };
   }, []);
 
   const fetchDashboardData = async () => {
@@ -80,13 +182,15 @@ export default function Dashboard() {
       const activeBuses = buses?.filter(b => b.status === 'active').length || 0;
       const totalBuses = buses?.length || 0;
 
-      // Fetch active trips
+      // Fetch active trips with bus info
       const { data: trips } = await supabase
         .from('trips')
-        .select('*, buses(*), staff_users(*)')
+        .select('*, buses(*)')
         .eq('status', 'in_progress')
         .order('started_at', { ascending: false })
-        .limit(5);
+        .limit(6);
+
+      setActiveTrips(trips || []);
 
       // Fetch passenger counts for today
       const today = new Date().toISOString().split('T')[0];
@@ -96,7 +200,6 @@ export default function Dashboard() {
         .gte('recorded_at', today);
 
       const currentPassengers = passengerCounts?.reduce((sum, pc) => sum + (pc.count || 0), 0) || 0;
-      const aiPassengerCount = passengerCounts?.reduce((sum, pc) => sum + (pc.ai_count || 0), 0) || 0;
 
       // Fetch transactions for today
       const { data: transactions } = await supabase
@@ -105,14 +208,6 @@ export default function Dashboard() {
         .gte('created_at', today);
 
       const fareCollectedToday = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
-
-      // Fetch boarded passengers for QR count
-      const { data: boardedPassengers } = await supabase
-        .from('boarded_passengers')
-        .select('id')
-        .gte('boarded_at', today);
-
-      const qrPassengerCount = boardedPassengers?.length || 0;
 
       // Fetch fare irregularities
       const { data: irregularities } = await supabase
@@ -126,7 +221,7 @@ export default function Dashboard() {
         .select('*')
         .eq('status', 'active')
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(3);
 
       // Count buses with recent GPS updates (last 5 minutes)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -151,124 +246,15 @@ export default function Dashboard() {
       (chartTransactions || []).forEach((tx: any) => {
         const date = new Date(tx.created_at).toLocaleDateString();
         if (!revenueByDate[date]) {
-          revenueByDate[date] = { date, fare: 0, baggage: 0, penalty: 0, total: 0 };
+          revenueByDate[date] = { date, fare: 0, baggage: 0, total: 0 };
         }
         const amount = Number(tx.amount);
         if (tx.type === 'fare') revenueByDate[date].fare += amount;
         if (tx.type === 'baggage') revenueByDate[date].baggage += amount;
-        if (tx.type === 'penalty') revenueByDate[date].penalty += amount;
         revenueByDate[date].total += amount;
       });
 
       setRevenueData(Object.values(revenueByDate));
-
-      // Fetch passenger data for chart
-      const { data: chartPassengers } = await supabase
-        .from('passenger_counts')
-        .select('count, ai_count, recorded_at')
-        .gte('recorded_at', sevenDaysAgo)
-        .order('recorded_at', { ascending: true });
-
-      const passengersByDate: Record<string, any> = {};
-      (chartPassengers || []).forEach((pc: any) => {
-        const date = new Date(pc.recorded_at).toLocaleDateString();
-        if (!passengersByDate[date]) {
-          passengersByDate[date] = { date, qr: 0, ai: 0 };
-        }
-        passengersByDate[date].qr += pc.count;
-        passengersByDate[date].ai += pc.ai_count || 0;
-      });
-
-      setPassengerData(Object.values(passengersByDate));
-
-      // Fetch trip data for chart
-      const { data: chartTrips } = await supabase
-        .from('trips')
-        .select('status, started_at')
-        .gte('started_at', sevenDaysAgo)
-        .order('started_at', { ascending: true });
-
-      const tripsByDate: Record<string, any> = {};
-      (chartTrips || []).forEach((trip: any) => {
-        const date = new Date(trip.started_at).toLocaleDateString();
-        if (!tripsByDate[date]) {
-          tripsByDate[date] = { date, completed: 0, in_progress: 0, cancelled: 0 };
-        }
-        if (trip.status === 'completed') tripsByDate[date].completed++;
-        if (trip.status === 'in_progress') tripsByDate[date].in_progress++;
-        if (trip.status === 'cancelled') tripsByDate[date].cancelled++;
-      });
-
-      setTripData(Object.values(tripsByDate));
-
-      // Fetch conductors
-      const { data: conductors } = await supabase
-        .from('staff_users')
-        .select('id, is_active')
-        .eq('role', 'conductor');
-
-      const totalConductors = conductors?.length || 0;
-      const activeConductors = conductors?.filter(c => c.is_active).length || 0;
-
-      // Fetch baggage transactions for today
-      const { data: baggageTransactions } = await supabase
-        .from('transactions')
-        .select('amount')
-        .eq('type', 'baggage')
-        .gte('created_at', today);
-
-      const totalBaggageToday = baggageTransactions?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-
-      // Fetch total transactions for today
-      const { data: allTransactions } = await supabase
-        .from('transactions')
-        .select('id')
-        .gte('created_at', today);
-
-      const totalTransactionsToday = allTransactions?.length || 0;
-
-      // Calculate average trip duration
-      const completedTrips = (trips || []).filter((t: any) => t.status === 'completed' && t.started_at && t.ended_at);
-      const avgTripDuration = completedTrips.length > 0 
-        ? completedTrips.reduce((sum: number, t: any) => {
-            const duration = (new Date(t.ended_at).getTime() - new Date(t.started_at).getTime()) / 1000 / 60; // minutes
-            return sum + duration;
-          }, 0) / completedTrips.length
-        : 0;
-
-      // Fetch recent transactions
-      const { data: recentTx } = await supabase
-        .from('transactions')
-        .select('amount, type, created_at, qr_cards(card_uid), trips(buses(bus_number, route))')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      setRecentTransactions(recentTx || []);
-
-      // Fetch recent activities
-      const { data: activities } = await supabase
-        .from('activity_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      setRecentActivities(activities || []);
-
-      // Bus status data
-      const busStatus = [
-        { name: 'Active', value: activeBuses, color: '#22c55e' },
-        { name: 'Inactive', value: totalBuses - activeBuses, color: '#ef4444' },
-      ];
-      setBusStatusData(busStatus);
-
-      // Route performance (mock data - would need actual route data)
-      const routePerf = [
-        { route: 'Route A', trips: 12, passengers: 450, revenue: 12500 },
-        { route: 'Route B', trips: 8, passengers: 320, revenue: 8900 },
-        { route: 'Route C', trips: 15, passengers: 580, revenue: 16200 },
-        { route: 'Route D', trips: 6, passengers: 240, revenue: 6700 },
-      ];
-      setRoutePerformance(routePerf);
 
       setKpiData({
         activeBuses,
@@ -277,20 +263,213 @@ export default function Dashboard() {
         currentPassengers,
         totalPassengersToday: currentPassengers,
         fareCollectedToday,
-        aiPassengerCount,
-        qrPassengerCount,
         activeIrregularities: irregularities?.length || 0,
         busesOnline,
-        totalConductors,
-        activeConductors,
-        totalBaggageToday,
-        totalTransactionsToday,
-        avgTripDuration,
       });
 
       setAlerts(emergencyAlerts || []);
+      
+      // Fetch live map data
+      await fetchLiveMapData();
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+    }
+  };
+
+  const fetchLiveMapData = async () => {
+    try {
+      // Fetch active trips with bus information
+      const { data: activeTrips } = await supabase
+        .from('trips')
+        .select('*, buses(*)')
+        .eq('status', 'in_progress')
+        .order('started_at', { ascending: false });
+
+      // Fetch all buses
+      const { data: allBuses } = await supabase
+        .from('buses')
+        .select('*');
+
+      const { data: gpsRows } = await (supabase
+        .from('gps_locations')
+        .select('trip_id, latitude, longitude, source, recorded_at')
+        .order('recorded_at', { ascending: false })
+        .limit(100) as any);
+
+      const latestGpsByTripId: Record<string, any> = {};
+      let latestGpsAny: any = null;
+      (gpsRows || []).forEach((row: any) => {
+        const gps = {
+          lat: parseFloat(row.latitude),
+          lng: parseFloat(row.longitude),
+          source: row.source || 'gps',
+          recordedAt: row.recorded_at,
+          tripId: row.trip_id || null
+        };
+
+        if (!Number.isFinite(gps.lat) || !Number.isFinite(gps.lng)) return;
+        if (!latestGpsAny) latestGpsAny = gps;
+        if (row.trip_id && !latestGpsByTripId[row.trip_id]) {
+          latestGpsByTripId[row.trip_id] = gps;
+        }
+      });
+
+      // Transform trips to bus markers
+      const busMarkers = (activeTrips || []).map((trip: any, index: number) => {
+        const gps = latestGpsByTripId[trip.id] || (index === 0 ? latestGpsAny : null);
+
+        return {
+          id: trip.id,
+          plate: trip.buses?.plate_number || 'Unknown',
+          route: trip.buses?.route || 'Unknown',
+          lat: gps?.lat ?? trip.current_lat ?? 8.429,
+          lng: gps?.lng ?? trip.current_lng ?? 124.762,
+          passengers: 0,
+          status: 'active',
+          locationSource: gps ? (gps.tripId ? gps.source : `${gps.source} (latest GPS)`) : 'fallback',
+          locationUpdatedAt: gps?.recordedAt || trip.gps_updated_at || null,
+          busId: trip.bus_id,
+          tripId: trip.id
+        };
+      });
+
+      // Add inactive buses
+      const usedLatestGps = busMarkers.some((bus: any) => bus.locationUpdatedAt === latestGpsAny?.recordedAt);
+      const inactiveBuses = (allBuses || [])
+        .filter((bus: any) => bus.status !== 'active' || !activeTrips?.some((t: any) => t.bus_id === bus.id))
+        .map((bus: any, index: number) => {
+          const gps = !usedLatestGps && index === 0 ? latestGpsAny : null;
+
+          return {
+            id: bus.id,
+            plate: bus.plate_number,
+            route: bus.route,
+            lat: gps?.lat ?? 8.429,
+            lng: gps?.lng ?? 124.762,
+            passengers: 0,
+            status: bus.status === 'maintenance' ? 'maintenance' : 'idle',
+            locationSource: gps ? `${gps.source} (latest GPS)` : 'fallback',
+            locationUpdatedAt: gps?.recordedAt || null,
+            busId: bus.id
+          };
+        });
+
+      // Fetch passenger counts for active trips
+      const tripIds = (activeTrips || []).map((t: any) => t.id);
+      let totalPassengers = 0;
+      
+      if (tripIds.length > 0) {
+        const { data: passengerCounts } = await (supabase
+          .from('passenger_counts')
+          .select('trip_id, count')
+          .in('trip_id', tripIds)
+          .order('recorded_at', { ascending: false }) as any);
+
+        const latestCounts: Record<string, number> = {};
+        (passengerCounts || []).forEach((pc: any) => {
+          if (!latestCounts[pc.trip_id]) {
+            latestCounts[pc.trip_id] = pc.count;
+          }
+        });
+
+        busMarkers.forEach((bus: any) => {
+          if (latestCounts[bus.tripId]) {
+            bus.passengers = latestCounts[bus.tripId];
+            totalPassengers += latestCounts[bus.tripId];
+          }
+        });
+      }
+
+      setMapBuses([...busMarkers, ...inactiveBuses] as any);
+
+      // Calculate stats
+      const uniqueRoutes = [...new Set((allBuses || []).map((b: any) => b.route))];
+      const activeBusesCount = (allBuses || []).filter((b: any) => b.status === 'active').length;
+
+      setMapStats({
+        totalPassengers,
+        activeBuses: activeBusesCount,
+        totalRoutes: uniqueRoutes.length,
+      });
+
+      const routeColors = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ef4444'];
+      
+      // Generate route coordinates for unique routes
+      const routeCoordsMap: Record<string, [number, number][]> = {};
+      
+      const predefinedRoutes: Record<string, { start: [number, number]; end: [number, number] }> = {
+        'Manolo Fortich - Agora': {
+          start: [8.367004436125404, 124.86562729876327],
+          end: [8.491303183117974, 124.65757370963438]
+        },
+        'Manolo Fortich - Cagayan de Oro': {
+          start: [8.367004436125404, 124.86562729876327],
+          end: [8.491303183117974, 124.65757370963438]
+        }
+      };
+      
+      // Always add the main route regardless of database route names
+      const mainRouteCoords = await fetchRouteCoordinates(
+        [8.367004436125404, 124.86562729876327],
+        [8.491303183117974, 124.65757370963438]
+      );
+      routeCoordsMap['Manolo Fortich - Agora'] = mainRouteCoords;
+      
+      // Try to match database routes with predefined routes (case-insensitive)
+      for (const route of uniqueRoutes) {
+        const routeLower = route.toLowerCase();
+        const predefinedKey = Object.keys(predefinedRoutes).find(
+          key => key.toLowerCase() === routeLower
+        );
+        
+        if (predefinedKey) {
+          const predefined = predefinedRoutes[predefinedKey];
+          const coords = await fetchRouteCoordinates(predefined.start, predefined.end);
+          routeCoordsMap[route] = coords;
+        }
+      }
+      
+      setRouteCoordinates(routeCoordsMap);
+      
+      // Always include the main route in the routes list
+      const routesToDisplay = uniqueRoutes.length > 0 
+        ? uniqueRoutes 
+        : ['Manolo Fortich - Agora'];
+      
+      setMapRoutes(routesToDisplay.map((route: any, index: number) => ({
+        id: index + 1,
+        name: route,
+        color: routeColors[index % routeColors.length],
+        path: routeCoordsMap[route] || routeCoordsMap['Manolo Fortich - Agora'] || []
+      })));
+
+    } catch (error) {
+      console.error('Error fetching live map data:', error);
+    }
+  };
+
+  const sortedTrips = [...activeTrips].sort((a, b) => {
+    let comparison = 0;
+    switch (tripsSortColumn) {
+      case 'started_at':
+        comparison = new Date(a.started_at).getTime() - new Date(b.started_at).getTime();
+        break;
+      case 'bus_number':
+        comparison = (a.buses?.bus_number || '').localeCompare(b.buses?.bus_number || '');
+        break;
+      case 'route':
+        comparison = (a.buses?.route || '').localeCompare(b.buses?.route || '');
+        break;
+    }
+    return tripsSortDirection === 'asc' ? comparison : -comparison;
+  });
+
+  const handleTripsSort = (column: typeof tripsSortColumn) => {
+    if (tripsSortColumn === column) {
+      setTripsSortDirection(tripsSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setTripsSortColumn(column);
+      setTripsSortDirection('asc');
     }
   };
 
@@ -298,368 +477,298 @@ export default function Dashboard() {
     {
       title: 'Active Buses',
       value: `${kpiData.activeBuses} / ${kpiData.totalBuses}`,
-      subtitle: 'Currently operating',
+      subtitle: `${kpiData.busesOnline} online with GPS`,
       icon: Bus,
       color: 'text-orange-400',
+      trend: 'Live',
     },
     {
-      title: 'Active Trips',
-      value: kpiData.activeTrips,
-      subtitle: 'In progress',
-      icon: Activity,
-      color: 'text-blue-400',
-    },
-    {
-      title: 'Current Passengers',
+      title: 'Passengers On Board',
       value: kpiData.currentPassengers,
-      subtitle: `Total today: ${kpiData.totalPassengersToday}`,
+      subtitle: `${kpiData.totalPassengersToday} total today`,
       icon: Users,
-      color: 'text-green-400',
+      color: 'text-blue-400',
+      trend: 'Real-time',
     },
     {
-      title: 'Fare Collected Today',
+      title: 'Revenue Today',
       value: `₱${kpiData.fareCollectedToday.toLocaleString()}`,
-      subtitle: 'Revenue',
+      subtitle: 'Fare & baggage fees',
       icon: DollarSign,
-      color: 'text-yellow-400',
+      color: 'text-green-400',
+      trend: '+12%',
+      highlight: true,
     },
     {
-      title: 'Active Conductors',
-      value: `${kpiData.activeConductors} / ${kpiData.totalConductors}`,
-      subtitle: 'Staff available',
-      icon: UserCheck,
-      color: 'text-purple-400',
-    },
-    {
-      title: 'Baggage Fees Today',
-      value: `₱${kpiData.totalBaggageToday.toLocaleString()}`,
-      subtitle: 'Additional revenue',
-      icon: Package,
-      color: 'text-pink-400',
-    },
-    {
-      title: 'Transactions Today',
-      value: kpiData.totalTransactionsToday,
-      subtitle: 'QR card scans',
-      icon: Receipt,
-      color: 'text-cyan-400',
-    },
-    {
-      title: 'Avg Trip Duration',
-      value: `${Math.round(kpiData.avgTripDuration)}m`,
-      subtitle: 'Trip efficiency',
-      icon: Clock,
-      color: 'text-indigo-400',
+      title: 'Active Alerts',
+      value: kpiData.activeIrregularities,
+      subtitle: 'Requires attention',
+      icon: AlertTriangle,
+      color: 'text-red-400',
+      trend: kpiData.activeIrregularities > 0 ? '⚠️' : 'Clear',
     },
   ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Operations Dashboard</h1>
-        <p className="text-white/60">Comprehensive overview of all operations</p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
+          <p className="text-white/60">Dashboard overview</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-white/60">
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <span>Live</span>
+        </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+      {/* Hero KPI Cards - 4 Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiCards.map((kpi, index) => {
           const Icon = kpi.icon;
           return (
-            <div key={index} className="glass-card p-3 hover:bg-white/10 transition-colors">
-              <div className="flex items-start justify-between mb-2">
-                <div className={`p-2 rounded-lg bg-white/10 ${kpi.color}`}>
-                  <Icon size={16} />
+            <div 
+              key={index} 
+              className={`glass-card p-6 hover:bg-white/10 transition-all duration-300 ${
+                kpi.highlight 
+                  ? 'ring-2 ring-yellow-400/50 ring-offset-2 ring-offset-black bg-gradient-to-br from-yellow-500/10 to-transparent' 
+                  : ''
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className={`p-3 rounded-xl bg-white/10 ${kpi.color}`}>
+                  <Icon size={20} />
                 </div>
+                {kpi.trend && (
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                    kpi.trend === '⚠️' ? 'bg-red-500/20 text-red-400' :
+                    kpi.trend.startsWith('+') ? 'bg-green-500/20 text-green-400' :
+                    'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {kpi.trend}
+                  </span>
+                )}
               </div>
-              <h3 className="text-white/60 text-xs font-medium mb-1">{kpi.title}</h3>
-              <p className="text-white text-lg font-bold mb-1">{kpi.value}</p>
+              <h3 className="text-white/70 text-sm font-medium mb-2">{kpi.title}</h3>
+              <p className="text-white text-3xl font-bold mb-1">{kpi.value}</p>
               {kpi.subtitle && (
-                <p className="text-white/40 text-[10px]">{kpi.subtitle}</p>
+                <p className="text-white/50 text-xs">{kpi.subtitle}</p>
               )}
             </div>
           );
         })}
       </div>
 
-      {/* Live Operations Summary */}
+      {/* Live Map - Embedded */}
       <div className="glass-card p-6">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Activity className="text-orange-400" size={20} />
-          Live Operations Summary
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-            <p className="text-white/60 text-sm mb-1">Active Trips</p>
-            <p className="text-white text-2xl font-bold">{kpiData.activeTrips}</p>
-            <p className="text-green-400 text-xs mt-1 flex items-center gap-1">
-              <ArrowUpRight size={12} /> Live tracking
-            </p>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <MapIcon className="text-blue-400" size={20} />
+            Live Bus Tracking
+          </h2>
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-2 text-white/70">
+              <Navigation size={16} />
+              <span>{mapStats.totalRoutes} Routes</span>
+            </div>
+            <div className="flex items-center gap-2 text-white/70">
+              <Bus size={16} />
+              <span>{mapStats.activeBuses} Active</span>
+            </div>
+            <div className="flex items-center gap-2 text-white/70">
+              <Users size={16} />
+              <span>{mapStats.totalPassengers} Passengers</span>
+            </div>
           </div>
-          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-            <p className="text-white/60 text-sm mb-1">Buses Online</p>
-            <p className="text-white text-2xl font-bold">{kpiData.busesOnline}</p>
-            <p className="text-cyan-400 text-xs mt-1 flex items-center gap-1">
-              <MapPin size={12} /> GPS connected
-            </p>
-          </div>
-          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-            <p className="text-white/60 text-sm mb-1">Current Passengers</p>
-            <p className="text-white text-2xl font-bold">{kpiData.currentPassengers}</p>
-            <p className="text-blue-400 text-xs mt-1 flex items-center gap-1">
-              <Users size={12} /> On board
-            </p>
-          </div>
+        </div>
+        
+        <div className="h-[500px] rounded-xl overflow-hidden">
+          <MapContainer 
+            center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.429, 124.762]} 
+            zoom={13} 
+            style={{ height: '100%', width: '100%' }}
+            dragging={true}
+            scrollWheelZoom={true}
+          >
+            <MapRecenter center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.429, 124.762]} />
+            {Object.values(routeCoordinates).flat().length > 0 && (
+              <MapRouteFitter coordinates={Object.values(routeCoordinates).flat()} />
+            )}
+            <TileLayer
+              attribution=""
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            {mapRoutes.map((route: any) => (
+              route.path.length > 0 && (
+                <Polyline
+                  key={route.id}
+                  positions={route.path}
+                  color={route.color}
+                  weight={4}
+                  opacity={0.7}
+                />
+              )
+            ))}
+            {mapBuses.map((bus: any) => (
+              <BusMarker key={bus.id} bus={bus} />
+            ))}
+          </MapContainer>
         </div>
       </div>
 
-      {/* Revenue & Transactions Summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Chart */}
+      {/* Active Trips & Revenue */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Active Trips List */}
+        <div className="lg:col-span-2 glass-card p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Activity className="text-orange-400" size={20} />
+              Active Trips
+            </h2>
+            <div className="flex items-center gap-4">
+              <span className="text-white/60 text-sm">{kpiData.activeTrips} in progress</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleTripsSort('bus_number')}
+                  className={`text-xs px-2 py-1 rounded transition-colors ${
+                    tripsSortColumn === 'bus_number'
+                      ? 'bg-orange-500/20 text-orange-400'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  Bus
+                  {tripsSortColumn === 'bus_number' && (
+                    tripsSortDirection === 'asc' ? <ArrowUp size={12} className="inline ml-1" /> : <ArrowDown size={12} className="inline ml-1" />
+                  )}
+                </button>
+                <button
+                  onClick={() => handleTripsSort('route')}
+                  className={`text-xs px-2 py-1 rounded transition-colors ${
+                    tripsSortColumn === 'route'
+                      ? 'bg-orange-500/20 text-orange-400'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  Route
+                  {tripsSortColumn === 'route' && (
+                    tripsSortDirection === 'asc' ? <ArrowUp size={12} className="inline ml-1" /> : <ArrowDown size={12} className="inline ml-1" />
+                  )}
+                </button>
+                <button
+                  onClick={() => handleTripsSort('started_at')}
+                  className={`text-xs px-2 py-1 rounded transition-colors ${
+                    tripsSortColumn === 'started_at'
+                      ? 'bg-orange-500/20 text-orange-400'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  Time
+                  {tripsSortColumn === 'started_at' && (
+                    tripsSortDirection === 'asc' ? <ArrowUp size={12} className="inline ml-1" /> : <ArrowDown size={12} className="inline ml-1" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {sortedTrips.length > 0 ? (
+            <div className="space-y-3">
+              {sortedTrips.map((trip: any) => (
+                <div key={trip.id} className="bg-white/5 rounded-xl p-4 border border-white/10 hover:bg-white/10 transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-orange-500/20">
+                        <Bus className="text-orange-400" size={16} />
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">Bus #{trip.buses?.bus_number || 'N/A'}</p>
+                        <p className="text-white/60 text-xs">{trip.buses?.route || 'Unknown Route'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-green-400 text-xs font-medium">Live</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-white/50">
+                    <span>Started: {new Date(trip.started_at).toLocaleTimeString()}</span>
+                    <span>Duration: {Math.round((Date.now() - new Date(trip.started_at).getTime()) / 60000)}m</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Activity className="text-white/20 mx-auto mb-3" size={48} />
+              <p className="text-white/40">No active trips</p>
+            </div>
+          )}
+        </div>
+
+        {/* Revenue Trend Chart */}
         <div className="glass-card p-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <DollarSign className="text-green-400" size={20} />
-            Revenue Trend (7 Days)
+            <TrendingUp className="text-green-400" size={20} />
+            Revenue (7 Days)
           </h2>
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={200}>
             <LineChart data={revenueData}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis dataKey="date" stroke="rgba(255,255,255,0.6)" />
-              <YAxis stroke="rgba(255,255,255,0.6)" />
+              <XAxis 
+                dataKey="date" 
+                stroke="rgba(255,255,255,0.6)" 
+                tick={{ fontSize: 10 }}
+              />
+              <YAxis 
+                stroke="rgba(255,255,255,0.6)" 
+                tick={{ fontSize: 10 }}
+              />
               <Tooltip
                 contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.2)' }}
                 itemStyle={{ color: 'white' }}
                 formatter={(value: any) => `₱${Number(value || 0).toLocaleString()}`}
               />
               <Legend />
-              <Line type="monotone" dataKey="fare" stroke="#f97316" name="Fare" strokeWidth={2} />
-              <Line type="monotone" dataKey="baggage" stroke="#8b5cf6" name="Baggage" strokeWidth={2} />
-              <Line type="monotone" dataKey="total" stroke="#22c55e" name="Total" strokeWidth={2} />
+              <Line type="monotone" dataKey="total" stroke="#22c55e" name="Total" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-
-        {/* Recent Transactions */}
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Receipt className="text-cyan-400" size={20} />
-            Recent Transactions
-          </h2>
-          {recentTransactions.length > 0 ? (
-            <div className="space-y-3">
-              {recentTransactions.slice(0, 5).map((tx: any) => (
-                <div key={tx.id} className="bg-white/5 rounded-lg p-3 border border-white/10">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-white font-medium">₱{Number(tx.amount).toFixed(2)}</span>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      tx.type === 'fare' ? 'bg-green-500/20 text-green-400' :
-                      tx.type === 'baggage' ? 'bg-orange-500/20 text-orange-400' :
-                      'bg-red-500/20 text-red-400'
-                    }`}>
-                      {tx.type}
-                    </span>
-                  </div>
-                  <p className="text-white/40 text-xs">
-                    Bus #{tx.trips?.buses?.bus_number || 'N/A'} • {tx.trips?.buses?.route || 'Unknown'}
-                  </p>
-                </div>
-              ))}
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <div className="flex items-center justify-between">
+              <span className="text-white/60 text-sm">Today's Revenue</span>
+              <span className="text-white font-bold">₱{kpiData.fareCollectedToday.toLocaleString()}</span>
             </div>
-          ) : (
-            <p className="text-white/40 text-center py-8">No recent transactions</p>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* Passenger & Trip Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Passenger Comparison */}
-        <div className="glass-card p-6">
+      {/* Alerts Section */}
+      {alerts.length > 0 && (
+        <div className="glass-card p-6 border-l-4 border-red-500">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Users className="text-blue-400" size={20} />
-            QR vs AI Count (7 Days)
-          </h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={passengerData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis dataKey="date" stroke="rgba(255,255,255,0.6)" />
-              <YAxis stroke="rgba(255,255,255,0.6)" />
-              <Tooltip
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.2)' }}
-                itemStyle={{ color: 'white' }}
-              />
-              <Legend />
-              <Bar dataKey="qr" fill="#3b82f6" name="QR Count" />
-              <Bar dataKey="ai" fill="#8b5cf6" name="AI Count" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Trip Status */}
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Activity className="text-orange-400" size={20} />
-            Trip Status (7 Days)
-          </h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={tripData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis dataKey="date" stroke="rgba(255,255,255,0.6)" />
-              <YAxis stroke="rgba(255,255,255,0.6)" />
-              <Tooltip
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.2)' }}
-                itemStyle={{ color: 'white' }}
-              />
-              <Legend />
-              <Bar dataKey="completed" fill="#22c55e" name="Completed" />
-              <Bar dataKey="in_progress" fill="#3b82f6" name="In Progress" />
-              <Bar dataKey="cancelled" fill="#ef4444" name="Cancelled" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Bus Status & Route Performance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bus Status */}
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Bus className="text-orange-400" size={20} />
-            Bus Status
-          </h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <RechartsPieChart>
-              <Pie
-                data={busStatusData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {busStatusData.map((entry: any, index: number) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.2)' }}
-                itemStyle={{ color: 'white' }}
-              />
-            </RechartsPieChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Route Performance */}
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <TrendingUp className="text-purple-400" size={20} />
-            Route Performance
+            <Zap className="text-red-400" size={20} />
+            Active Alerts
           </h2>
           <div className="space-y-3">
-            {routePerformance.map((route: any) => (
-              <div key={route.route} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-white font-medium">{route.route}</span>
-                  <span className="text-green-400 text-sm">₱{route.revenue.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center gap-4 text-white/60 text-sm">
-                  <span>{route.trips} trips</span>
-                  <span>{route.passengers} passengers</span>
+            {alerts.map((alert: any) => (
+              <div key={alert.id} className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-white font-medium">{alert.notes || 'Emergency Alert'}</p>
+                    <p className="text-white/60 text-xs mt-1">
+                      {new Date(alert.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-full font-medium">
+                    Active
+                  </span>
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Alerts & Activity Log */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Emergency Alerts */}
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <AlertTriangle className="text-red-400" size={20} />
-            Emergency Alerts
-          </h2>
-          {alerts.length > 0 ? (
-            <div className="space-y-3">
-              {alerts.map((alert) => (
-                <div key={alert.id} className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-red-400 font-medium">Emergency</span>
-                    <span className="text-white/40 text-xs">
-                      {new Date(alert.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="text-white/80 text-sm">{alert.notes || 'No details'}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-white/40 text-center py-8">No active alerts</p>
-          )}
-        </div>
-
-        {/* Recent Activity */}
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Bell className="text-yellow-400" size={20} />
-            Recent Activity
-          </h2>
-          {recentActivities.length > 0 ? (
-            <div className="space-y-3">
-              {recentActivities.map((activity: any) => (
-                <div key={activity.id} className="bg-white/5 rounded-lg p-3 border border-white/10">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-white font-medium">{activity.action || 'Activity'}</span>
-                    <span className="text-white/40 text-xs">
-                      {new Date(activity.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="text-white/60 text-sm">{activity.details || 'No details'}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-white/40 text-center py-8">No recent activity</p>
-          )}
-        </div>
-      </div>
-
-      {/* Revenue Distribution */}
-      <div className="glass-card p-6">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <TrendingUp className="text-purple-400" size={20} />
-          Revenue Distribution
-        </h2>
-        <ResponsiveContainer width="100%" height={250}>
-          <RechartsPieChart>
-            <Pie
-              data={[
-                { name: 'Fare', value: revenueData.reduce((sum, d) => sum + (d.fare || 0), 0) },
-                { name: 'Baggage', value: revenueData.reduce((sum, d) => sum + (d.baggage || 0), 0) },
-                { name: 'Penalty', value: revenueData.reduce((sum, d) => sum + (d.penalty || 0), 0) },
-              ]}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-              outerRadius={80}
-              fill="#8884d8"
-              dataKey="value"
-            >
-              <Cell fill="#f97316" />
-              <Cell fill="#8b5cf6" />
-              <Cell fill="#ef4444" />
-            </Pie>
-            <Tooltip
-              contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.2)' }}
-              itemStyle={{ color: 'white' }}
-              formatter={(value: any) => `₱${Number(value || 0).toLocaleString()}`}
-            />
-          </RechartsPieChart>
-        </ResponsiveContainer>
-      </div>
     </div>
   );
 }

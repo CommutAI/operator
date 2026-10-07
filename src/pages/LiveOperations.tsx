@@ -59,7 +59,6 @@ function MapView({ buses, selectedBus, setSelectedBus }: {
   return (
     <>
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {buses.map((bus) => (
@@ -515,6 +514,7 @@ export default function LiveOperations() {
                 zoom={10}
                 style={{ height: '100%', width: '100%' }}
                 className="rounded-lg"
+                attributionControl={false}
               >
                 <MapView buses={buses} selectedBus={selectedBus} setSelectedBus={setSelectedBus} />
               </MapContainer>

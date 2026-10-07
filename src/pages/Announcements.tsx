@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Megaphone, Plus, Clock, Trash2, Edit, AlertTriangle, Search, Filter, User, MapPin, CheckCircle } from 'lucide-react';
+import { Megaphone, Plus, Clock, Trash2, Edit, AlertTriangle, Search, Filter, User, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Announcement {
   id: string;
@@ -34,6 +34,8 @@ export default function Announcements() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [emergencyPage, setEmergencyPage] = useState(0);
+  const itemsPerPage = 5;
   const [formData, setFormData] = useState({
     title: '',
     message: '',
@@ -92,11 +94,9 @@ export default function Announcements() {
           created_at,
           acknowledged_at,
           resolved_at,
-          trips (
-            id,
-            conductor_id,
-            buses (bus_number, route)
-          )
+          trip_id,
+          conductor_id,
+          buses!inner (bus_number, route)
         `)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -104,7 +104,7 @@ export default function Announcements() {
       if (alertsError) throw alertsError;
 
       // Fetch all conductors separately
-      const conductorIds = [...new Set((alertsData || []).map((alert: any) => alert.trips?.conductor_id).filter(Boolean))];
+      const conductorIds = [...new Set((alertsData || []).map((alert: any) => alert.conductor_id).filter(Boolean))];
       const { data: conductors } = await supabase
         .from('staff_users')
         .select('id, full_name')
@@ -116,9 +116,9 @@ export default function Announcements() {
 
       const alerts: EmergencyAlert[] = (alertsData || []).map((alert: any) => ({
         id: alert.id,
-        bus_number: alert.trips?.buses?.bus_number || 0,
-        route: alert.trips?.buses?.route || 'Unknown',
-        conductor_name: conductorMap.get(alert.trips?.conductor_id) || 'Unknown',
+        bus_number: alert.buses?.bus_number || 0,
+        route: alert.buses?.route || 'Unknown',
+        conductor_name: conductorMap.get(alert.conductor_id) || 'Unknown',
         lat: alert.lat,
         lng: alert.lng,
         status: alert.status,
@@ -138,24 +138,27 @@ export default function Announcements() {
     e.preventDefault();
     
     try {
-      const announcementData = {
-        title: formData.title,
-        message: formData.message,
-        priority: formData.priority,
-        expires_at: formData.expires_at || null,
-      };
-
       if (editingId) {
         const { error } = await supabase
           .from('announcements')
-          .update(announcementData)
+          .update({
+            title: formData.title,
+            message: formData.message,
+            priority: formData.priority,
+            expires_at: formData.expires_at || null,
+          })
           .eq('id', editingId);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('announcements')
-          .insert(announcementData);
+          .insert({
+            title: formData.title,
+            message: formData.message,
+            priority: formData.priority,
+            expires_at: formData.expires_at || null,
+          });
 
         if (error) throw error;
       }
@@ -174,7 +177,7 @@ export default function Announcements() {
       title: announcement.title,
       message: announcement.message,
       priority: announcement.priority,
-      expires_at: announcement.expires_at?.split('T')[0] || '',
+      expires_at: announcement.expires_at || '',
     });
     setEditingId(announcement.id);
     setShowForm(true);
@@ -182,7 +185,7 @@ export default function Announcements() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this announcement?')) return;
-
+    
     try {
       const { error } = await supabase
         .from('announcements')
@@ -196,27 +199,11 @@ export default function Announcements() {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'text-red-400 bg-red-500/20';
-      case 'high': return 'text-orange-400 bg-orange-500/20';
-      case 'normal': return 'text-blue-400 bg-blue-500/20';
-      case 'low': return 'text-gray-400 bg-gray-500/20';
-      default: return 'text-white/60 bg-white/10';
-    }
-  };
-
-  const isExpired = (expiresAt?: string) => {
-    if (!expiresAt) return false;
-    return new Date(expiresAt) < new Date();
-  };
-
-  // Emergency alert functions
   const acknowledgeAlert = async (id: string) => {
     try {
       const { error } = await supabase
         .from('emergency_alerts')
-        .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
+        .update({ acknowledged_at: new Date().toISOString(), status: 'acknowledged' })
         .eq('id', id);
 
       if (error) throw error;
@@ -230,7 +217,7 @@ export default function Announcements() {
     try {
       const { error } = await supabase
         .from('emergency_alerts')
-        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .update({ resolved_at: new Date().toISOString(), status: 'resolved' })
         .eq('id', id);
 
       if (error) throw error;
@@ -240,12 +227,21 @@ export default function Announcements() {
     }
   };
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent': return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'high': return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
+      case 'normal': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      default: return 'bg-white/10 text-white/60 border-white/20';
+    }
+  };
+
   const getEmergencyStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'text-red-400 bg-red-500/20';
-      case 'acknowledged': return 'text-yellow-400 bg-yellow-500/20';
-      case 'resolved': return 'text-green-400 bg-green-500/20';
-      default: return 'text-white/60 bg-white/10';
+      case 'active': return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'acknowledged': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+      case 'resolved': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      default: return 'bg-white/10 text-white/60 border-white/20';
     }
   };
 
@@ -260,291 +256,214 @@ export default function Announcements() {
     return matchesSearch && matchesStatus;
   });
 
-  const activeCount = emergencyAlerts.filter(a => a.status === 'active').length;
-  const acknowledgedCount = emergencyAlerts.filter(a => a.status === 'acknowledged').length;
-  const resolvedCount = emergencyAlerts.filter(a => a.status === 'resolved').length;
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Communications Center</h1>
-          <p className="text-white/60">Manage announcements and emergency alerts</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Communications</h1>
+          <p className="text-white/60">System communications and alerts</p>
         </div>
         <button
-          onClick={() => {
-            setFormData({ title: '', message: '', priority: 'normal', expires_at: '' });
-            setEditingId(null);
-            setShowForm(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+          onClick={() => setShowForm(true)}
+          className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
         >
           <Plus size={20} />
           New Announcement
         </button>
       </div>
 
-      {/* Emergency Alert Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-red-500/20 text-red-400">
-              <AlertTriangle size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Active</p>
-              <p className="text-white text-2xl font-bold">{activeCount}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-yellow-500/20 text-yellow-400">
-              <AlertTriangle size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Acknowledged</p>
-              <p className="text-white text-2xl font-bold">{acknowledgedCount}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-green-500/20 text-green-400">
-              <CheckCircle size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Resolved</p>
-              <p className="text-white text-2xl font-bold">{resolvedCount}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-blue-500/20 text-blue-400">
-              <AlertTriangle size={24} />
-            </div>
-            <div>
-              <p className="text-white/60 text-sm">Total</p>
-              <p className="text-white text-2xl font-bold">{emergencyAlerts.length}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Form Modal */}
+      {/* Announcement Form Modal */}
       {showForm && (
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4">
-            {editingId ? 'Edit Announcement' : 'New Announcement'}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-white/80 mb-2">Title</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-white/80 mb-2">Message</label>
-              <textarea
-                value={formData.message}
-                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500 h-32"
-                required
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
+          <div className="glass-card rounded-xl p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold text-white mb-6">
+              {editingId ? 'Edit Announcement' : 'New Announcement'}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-white/80 mb-2">Priority</label>
+                <label className="block text-white/60 text-sm mb-2">Title</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-white/60 text-sm mb-2">Message</label>
+                <textarea
+                  value={formData.message}
+                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                  className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500 min-h-[100px]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-white/60 text-sm mb-2">Priority</label>
                 <select
                   value={formData.priority}
                   onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
                   className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
                 >
-                  <option value="low">Low</option>
                   <option value="normal">Normal</option>
                   <option value="high">High</option>
                   <option value="urgent">Urgent</option>
                 </select>
               </div>
-              
               <div>
-                <label className="block text-white/80 mb-2">Expires At (Optional)</label>
+                <label className="block text-white/60 text-sm mb-2">Expires At (Optional)</label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={formData.expires_at}
                   onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
                   className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
                 />
               </div>
-            </div>
-            
-            <div className="flex gap-4">
-              <button
-                type="submit"
-                className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
-              >
-                {editingId ? 'Update' : 'Create'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingId(null);
-                  setFormData({ title: '', message: '', priority: 'normal', expires_at: '' });
-                }}
-                className="px-6 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+              <div className="flex gap-3 justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditingId(null);
+                    setFormData({ title: '', message: '', priority: 'normal', expires_at: '' });
+                  }}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  {editingId ? 'Update' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="glass-card p-4 flex flex-col md:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40" size={20} />
-          <input
-            type="text"
-            placeholder="Search by bus, route, or conductor..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-orange-500"
-          />
-        </div>
+      {/* Active Announcements */}
+      <div className="glass-card p-6">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Megaphone className="text-orange-400" size={20} />
+          Active Announcements
+        </h2>
         
-        <div className="flex items-center gap-2">
-          <Filter className="text-white/40" size={20} />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="acknowledged">Acknowledged</option>
-            <option value="resolved">Resolved</option>
-          </select>
-        </div>
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="text-white">Loading announcements...</div>
+          </div>
+        ) : announcements.length === 0 ? (
+          <div className="text-center py-8">
+            <Megaphone className="text-white/20 mx-auto mb-2" size={48} />
+            <p className="text-white/40">No announcements found</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {announcements.map((announcement) => (
+              <div key={announcement.id} className="bg-white/5 rounded-xl p-4 border border-white/10 hover:bg-white/10 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getPriorityColor(announcement.priority)}`}>
+                        {announcement.priority}
+                      </span>
+                      <h3 className="text-white font-semibold">{announcement.title}</h3>
+                    </div>
+                    <p className="text-white/70 text-sm">{announcement.message}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(announcement)}
+                      className="p-2 bg-white/10 hover:bg-white/20 text-white/60 rounded-lg transition-colors"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(announcement.id)}
+                      className="p-2 bg-white/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-white/40">
+                  <div className="flex items-center gap-1">
+                    <User size={12} />
+                    <span>{announcement.created_by || 'System'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock size={12} />
+                    <span>{new Date(announcement.created_at).toLocaleString()}</span>
+                  </div>
+                  {announcement.expires_at && (
+                    <div className="flex items-center gap-1">
+                      <span>Expires: {new Date(announcement.expires_at).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Announcements Section */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Megaphone className="text-orange-400" size={20} />
-            Announcements
-          </h2>
+      {/* Emergency Alerts Section */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <AlertTriangle className="text-red-400" size={20} />
+          Emergency History
+        </h2>
 
-          {/* Announcements List */}
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-white">Active Announcements</h2>
-              <span className="text-white/60">{announcements.length} announcements</span>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-white">Loading announcements...</div>
-              </div>
-            ) : announcements.length === 0 ? (
-              <div className="text-center py-8">
-                <Megaphone className="text-white/20 mx-auto mb-2" size={48} />
-                <p className="text-white/40">No announcements found</p>
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-[500px] overflow-y-auto">
-                {announcements.map((announcement) => (
-                  <div
-                    key={announcement.id}
-                    className={`p-4 rounded-lg border transition-colors ${
-                      isExpired(announcement.expires_at)
-                        ? 'bg-white/5 border-white/10 opacity-50'
-                        : 'bg-white/10 border-white/20'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPriorityColor(announcement.priority)}`}>
-                            {announcement.priority}
-                          </span>
-                          <h3 className="text-white font-semibold">{announcement.title}</h3>
-                          {isExpired(announcement.expires_at) && (
-                            <span className="px-2 py-1 rounded text-xs text-red-400 bg-red-500/20">Expired</span>
-                          )}
-                        </div>
-                        <p className="text-white/80 mb-3">{announcement.message}</p>
-                        <div className="flex items-center gap-4 text-white/60 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Clock size={14} />
-                            <span>{new Date(announcement.created_at).toLocaleString()}</span>
-                          </div>
-                          {announcement.expires_at && (
-                            <span>Expires: {new Date(announcement.expires_at).toLocaleDateString()}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2 ml-4">
-                        <button
-                          onClick={() => handleEdit(announcement)}
-                          className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Edit size={18} className="text-white/60 hover:text-white" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(announcement.id)}
-                          className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={18} className="text-red-400 hover:text-red-300" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Filters */}
+        <div className="glass-card p-4 flex flex-col md:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40" size={20} />
+            <input
+              type="text"
+              placeholder="Search by bus, route, or conductor..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-orange-500"
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Filter className="text-white/40" size={20} />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="resolved">Resolved</option>
+            </select>
           </div>
         </div>
 
-        {/* Emergency Alerts Section */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="text-red-400" size={20} />
-            Emergency History
-          </h2>
+        {/* Alert List */}
+        <div className="glass-card p-6">
+          <div className="flex items-center justify-between mb-6">
+            <span className="text-white/60">{filteredAlerts.length} alerts</span>
+          </div>
 
-          {/* Alert List */}
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-white/60">{filteredAlerts.length} alerts</span>
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="text-white">Loading alerts...</div>
             </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-white">Loading alerts...</div>
-              </div>
-            ) : filteredAlerts.length === 0 ? (
-              <div className="text-center py-8">
-                <AlertTriangle className="text-white/20 mx-auto mb-2" size={48} />
-                <p className="text-white/40">No emergency alerts found</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+          ) : filteredAlerts.length === 0 ? (
+            <div className="text-center py-8">
+              <AlertTriangle className="text-white/20 mx-auto mb-2" size={48} />
+              <p className="text-white/40">No emergency alerts found</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto mb-4">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-white/10">
@@ -559,7 +478,10 @@ export default function Announcements() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAlerts.map((alert) => (
+                    {filteredAlerts.slice(
+                      emergencyPage * itemsPerPage,
+                      (emergencyPage + 1) * itemsPerPage
+                    ).map((alert) => (
                       <tr key={alert.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td className="py-4 px-4">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEmergencyStatusColor(alert.status)}`}>
@@ -567,23 +489,23 @@ export default function Announcements() {
                           </span>
                         </td>
                         <td className="py-4 px-4">
-                          <span className="text-white font-medium">#{alert.bus_number}</span>
+                          <span className="text-white font-medium">Bus #{alert.bus_number}</span>
                         </td>
                         <td className="py-4 px-4 text-white/80">{alert.route}</td>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-2 text-white/80">
-                            <User size={16} />
-                            <span>{alert.conductor_name}</span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4">
+                        <td className="py-4 px-4 text-white/80">{alert.conductor_name}</td>
+                        <td className="py-4 px-4 text-white/80">
                           {alert.lat && alert.lng ? (
-                            <div className="flex items-center gap-2 text-white/80">
-                              <MapPin size={16} />
-                              <span>{alert.lat.toFixed(4)}, {alert.lng.toFixed(4)}</span>
-                            </div>
+                            <a
+                              href={`https://maps.google.com/?q=${alert.lat},${alert.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                            >
+                              <MapPin size={14} />
+                              View on Map
+                            </a>
                           ) : (
-                            <span className="text-white/40">No location</span>
+                            '-'
                           )}
                         </td>
                         <td className="py-4 px-4 text-white/80 max-w-xs truncate">
@@ -620,8 +542,31 @@ export default function Announcements() {
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                <span className="text-white/60 text-xs">
+                  Page {emergencyPage + 1} of {Math.ceil(filteredAlerts.length / itemsPerPage)}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEmergencyPage(Math.max(0, emergencyPage - 1))}
+                    disabled={emergencyPage === 0}
+                    className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={() => setEmergencyPage(Math.min(Math.ceil(filteredAlerts.length / itemsPerPage) - 1, emergencyPage + 1))}
+                    disabled={emergencyPage === Math.ceil(filteredAlerts.length / itemsPerPage) - 1}
+                    className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

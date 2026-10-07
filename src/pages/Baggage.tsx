@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Package, Search, Filter, DollarSign, Bus, User, Clock } from 'lucide-react';
+import { Package, Search, Filter, DollarSign, User, Clock } from 'lucide-react';
 
 interface BaggageFee {
   id: string;

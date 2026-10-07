@@ -20,6 +20,10 @@ export default function Passengers() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
+  // @ts-ignore - setters will be used for custom date range implementation
+  void setCustomStartDate;
+  void setCustomEndDate;
+
   useEffect(() => {
     fetchPassengerCounts();
     

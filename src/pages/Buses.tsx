@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Bus, Users, MapPin, Clock, Activity, Search, Filter } from 'lucide-react';
+import { Bus, Users, Activity, Search, Filter } from 'lucide-react';
 
 interface Bus {
   id: string;
