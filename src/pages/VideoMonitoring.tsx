@@ -14,6 +14,7 @@ interface FareIrregularity {
   resolved: boolean;
   resolved_at?: string;
   description?: string;
+  trip_id?: string;
 }
 
 interface PassengerCount {
@@ -77,7 +78,9 @@ const VideoMonitoring = ({ autoConnect = true }) => {
           ai_count,
           recorded_at,
           trip_id,
-          buses!inner (bus_number, route)
+          trips!inner (
+            buses (bus_number, route)
+          )
         `)
         .order('recorded_at', { ascending: false })
         .limit(100);
@@ -87,8 +90,8 @@ const VideoMonitoring = ({ autoConnect = true }) => {
       const counts: PassengerCount[] = (data || []).map((pc: any) => ({
         id: pc.id,
         trip_id: pc.trip_id,
-        bus_number: pc.buses?.bus_number || 0,
-        route: pc.buses?.route || 'Unknown',
+        bus_number: pc.trips?.buses?.bus_number || 0,
+        route: pc.trips?.buses?.route || 'Unknown',
         count: pc.count,
         ai_count: pc.ai_count,
         recorded_at: pc.recorded_at,
@@ -112,15 +115,17 @@ const VideoMonitoring = ({ autoConnect = true }) => {
           resolved,
           resolved_at,
           trip_id,
-          conductor_id,
-          buses!inner (bus_number, route)
+          trips!inner (
+            conductor_id,
+            buses (bus_number, route)
+          )
         `)
         .order('detected_at', { ascending: false })
         .limit(100);
 
       if (irregularitiesError) throw irregularitiesError;
 
-      const conductorIds = [...new Set((irregularitiesData || []).map((ir: any) => ir.conductor_id).filter(Boolean))];
+      const conductorIds = [...new Set((irregularitiesData || []).map((ir: any) => ir.trips?.conductor_id).filter(Boolean))];
       const { data: conductors } = await supabase
         .from('staff_users')
         .select('id, full_name')
@@ -133,9 +138,9 @@ const VideoMonitoring = ({ autoConnect = true }) => {
       const irregularities: FareIrregularity[] = (irregularitiesData || []).map((ir: any) => ({
         id: ir.id,
         type: ir.type,
-        bus_number: ir.buses?.bus_number || 0,
-        route: ir.buses?.route || 'Unknown',
-        conductor_name: conductorMap.get(ir.conductor_id) || 'Unknown',
+        bus_number: ir.trips?.buses?.bus_number || 0,
+        route: ir.trips?.buses?.route || 'Unknown',
+        conductor_name: conductorMap.get(ir.trips?.conductor_id) || 'Unknown',
         detected_at: ir.detected_at,
         resolved: ir.resolved,
         resolved_at: ir.resolved_at,
