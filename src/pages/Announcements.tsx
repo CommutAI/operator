@@ -134,9 +134,25 @@ export default function Announcements() {
     }
   };
 
+  const validateForm = (): boolean => {
+    if (!formData.title.trim() || formData.title.length < 3) {
+      alert('Title must be at least 3 characters');
+      return false;
+    }
+    if (!formData.message.trim() || formData.message.length < 10) {
+      alert('Message must be at least 10 characters');
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (!validateForm()) {
+      return;
+    }
+
     try {
       if (editingId) {
         const { error } = await supabase
@@ -167,8 +183,10 @@ export default function Announcements() {
       setShowForm(false);
       setEditingId(null);
       fetchAnnouncements();
+      alert('Announcement saved successfully');
     } catch (error) {
       console.error('Error saving announcement:', error);
+      alert('Failed to save announcement. Please try again.');
     }
   };
 
@@ -185,7 +203,7 @@ export default function Announcements() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this announcement?')) return;
-    
+
     try {
       const { error } = await supabase
         .from('announcements')
@@ -194,8 +212,10 @@ export default function Announcements() {
 
       if (error) throw error;
       fetchAnnouncements();
+      alert('Announcement deleted successfully');
     } catch (error) {
       console.error('Error deleting announcement:', error);
+      alert('Failed to delete announcement. Please try again.');
     }
   };
 
@@ -208,8 +228,10 @@ export default function Announcements() {
 
       if (error) throw error;
       fetchEmergencyAlerts();
+      alert('Alert acknowledged successfully');
     } catch (error) {
       console.error('Error acknowledging alert:', error);
+      alert('Failed to acknowledge alert. Please try again.');
     }
   };
 
@@ -222,8 +244,10 @@ export default function Announcements() {
 
       if (error) throw error;
       fetchEmergencyAlerts();
+      alert('Alert resolved successfully');
     } catch (error) {
       console.error('Error resolving alert:', error);
+      alert('Failed to resolve alert. Please try again.');
     }
   };
 

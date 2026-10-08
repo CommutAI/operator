@@ -3,9 +3,19 @@ import { supabase } from '../lib/supabase';
 import { AlertTriangle, Users, Video, Activity, Clock, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 import VideoMonitoring from './VideoMonitoring';
 
+interface DetectionEvent {
+  id: string;
+  bus: string;
+  event: string;
+  time: string;
+  timeValue: number;
+  type: 'irregularity' | 'passenger';
+}
+
 export default function AIMonitoring() {
   const [unresolvedCount, setUnresolvedCount] = useState(0);
   const [totalPassengers, setTotalPassengers] = useState(0);
+  const [detectionHistory, setDetectionHistory] = useState<DetectionEvent[]>([]);
   const [historyPage, setHistoryPage] = useState(0);
   const [sortBy, setSortBy] = useState<'time' | 'bus' | 'event'>('time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -32,39 +42,63 @@ export default function AIMonitoring() {
 
   const fetchStats = async () => {
     try {
-      const [{ count: irregularityCount }, { data: passengerData }] = await Promise.all([
+      const [{ count: irregularityCount }, { data: passengerData }, { data: irregularitiesData }] = await Promise.all([
         supabase
           .from('fare_irregularities')
           .select('*', { count: 'exact', head: true })
           .eq('resolved', false),
         supabase
           .from('passenger_counts')
-          .select('count')
+          .select('count, recorded_at, trip_id')
           .order('recorded_at', { ascending: false })
-          .limit(100)
+          .limit(100),
+        supabase
+          .from('fare_irregularities')
+          .select('id, description, detected_at, trip_id')
+          .order('detected_at', { ascending: false })
+          .limit(50)
       ]);
 
       setUnresolvedCount(irregularityCount || 0);
-      
+
       const total = (passengerData || []).reduce((sum: number, pc: any) => sum + (pc.count || 0), 0);
       setTotalPassengers(total);
+
+      // Build detection history from actual data
+      const history: DetectionEvent[] = [];
+
+      // Add passenger count events
+      (passengerData || []).slice(0, 25).forEach((pc: any, index: number) => {
+        const minutesAgo = Math.floor((Date.now() - new Date(pc.recorded_at).getTime()) / 60000);
+        history.push({
+          id: `pc-${pc.id}`,
+          bus: 'Unknown',
+          event: `Detected ${pc.count} passengers`,
+          time: minutesAgo < 1 ? 'Just now' : `${minutesAgo} min ago`,
+          timeValue: minutesAgo,
+          type: 'passenger'
+        });
+      });
+
+      // Add irregularity events
+      (irregularitiesData || []).forEach((irr: any) => {
+        const minutesAgo = Math.floor((Date.now() - new Date(irr.detected_at).getTime()) / 60000);
+        history.push({
+          id: irr.id,
+          bus: 'Unknown',
+          event: `Fare irregularity: ${irr.description || 'Unknown'}`,
+          time: minutesAgo < 1 ? 'Just now' : `${minutesAgo} min ago`,
+          timeValue: minutesAgo,
+          type: 'irregularity'
+        });
+      });
+
+      // Sort by time and take top 50
+      setDetectionHistory(history.sort((a, b) => a.timeValue - b.timeValue).slice(0, 50));
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
   };
-
-  const detectionHistory = [
-    { id: 1, bus: '1234', event: 'Detected 5 passengers boarding at Manolo Fortich Terminal', time: '2 min ago', timeValue: 2 },
-    { id: 2, bus: '5678', event: 'Detected 3 passengers alighting at Agora Terminal', time: '5 min ago', timeValue: 5 },
-    { id: 3, bus: '9012', event: 'Fare irregularity detected: No ticket validation', time: '8 min ago', timeValue: 8 },
-    { id: 4, bus: '3456', event: 'Detected 7 passengers boarding at Manolo Fortich Terminal', time: '12 min ago', timeValue: 12 },
-    { id: 5, bus: '7890', event: 'Detected 2 passengers alighting at Agora Terminal', time: '15 min ago', timeValue: 15 },
-    { id: 6, bus: '2345', event: 'Fare irregularity detected: Invalid ticket', time: '20 min ago', timeValue: 20 },
-    { id: 7, bus: '6789', event: 'Detected 4 passengers boarding at Manolo Fortich Terminal', time: '25 min ago', timeValue: 25 },
-    { id: 8, bus: '0123', event: 'Detected 6 passengers alighting at Agora Terminal', time: '30 min ago', timeValue: 30 },
-    { id: 9, bus: '4567', event: 'Detected 3 passengers boarding at Manolo Fortich Terminal', time: '35 min ago', timeValue: 35 },
-    { id: 10, bus: '8901', event: 'Fare irregularity detected: Overcrowding', time: '40 min ago', timeValue: 40 },
-  ];
 
   const sortedHistory = [...detectionHistory].sort((a, b) => {
     let comparison = 0;
