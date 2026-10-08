@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { toast } from 'react-hot-toast';
 import { StaffUser } from '../types';
 
 interface AuthContextType {
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Sign out if not operator
         await supabase.auth.signOut();
         setUser(null);
+        toast.error('Access denied. Only operators can access this dashboard.');
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
