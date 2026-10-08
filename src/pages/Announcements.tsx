@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { toast } from 'react-hot-toast';
 import { Megaphone, Plus, Clock, Trash2, Edit, AlertTriangle, Search, Filter, User, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Announcement {
@@ -136,11 +137,11 @@ export default function Announcements() {
 
   const validateForm = (): boolean => {
     if (!formData.title.trim() || formData.title.length < 3) {
-      alert('Title must be at least 3 characters');
+      toast.error('Title must be at least 3 characters');
       return false;
     }
     if (!formData.message.trim() || formData.message.length < 10) {
-      alert('Message must be at least 10 characters');
+      toast.error('Message must be at least 10 characters');
       return false;
     }
     return true;
@@ -183,10 +184,10 @@ export default function Announcements() {
       setShowForm(false);
       setEditingId(null);
       fetchAnnouncements();
-      alert('Announcement saved successfully');
+      toast.success('Announcement saved successfully');
     } catch (error) {
       console.error('Error saving announcement:', error);
-      alert('Failed to save announcement. Please try again.');
+      toast.error('Failed to save announcement. Please try again.');
     }
   };
 
@@ -212,10 +213,10 @@ export default function Announcements() {
 
       if (error) throw error;
       fetchAnnouncements();
-      alert('Announcement deleted successfully');
+      toast.success('Announcement deleted successfully');
     } catch (error) {
       console.error('Error deleting announcement:', error);
-      alert('Failed to delete announcement. Please try again.');
+      toast.error('Failed to delete announcement. Please try again.');
     }
   };
 
@@ -228,10 +229,10 @@ export default function Announcements() {
 
       if (error) throw error;
       fetchEmergencyAlerts();
-      alert('Alert acknowledged successfully');
+      toast.success('Alert acknowledged successfully');
     } catch (error) {
       console.error('Error acknowledging alert:', error);
-      alert('Failed to acknowledge alert. Please try again.');
+      toast.error('Failed to acknowledge alert. Please try again.');
     }
   };
 
@@ -244,10 +245,10 @@ export default function Announcements() {
 
       if (error) throw error;
       fetchEmergencyAlerts();
-      alert('Alert resolved successfully');
+      toast.success('Alert resolved successfully');
     } catch (error) {
       console.error('Error resolving alert:', error);
-      alert('Failed to resolve alert. Please try again.');
+      toast.error('Failed to resolve alert. Please try again.');
     }
   };
 

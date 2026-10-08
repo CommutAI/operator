@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard,
   Receipt,
@@ -9,14 +10,18 @@ import {
   User,
   LogOut,
   Menu,
-  X
+  X,
+  Video,
+  Map as MapIcon
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boolean) => void }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { signOut } = useAuth();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await signOut();
     navigate('/login');
   };
 
@@ -25,6 +30,8 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
     { path: '/transactions', icon: Receipt, label: 'Card Management' },
     { path: '/reports', icon: FileText, label: 'Reports' },
     { path: '/ai-monitoring', icon: Brain, label: 'AI Monitoring' },
+    { path: '/video-monitoring', icon: Video, label: 'Video Monitoring' },
+    { path: '/live-map', icon: MapIcon, label: 'Live Map' },
     { path: '/announcements', icon: Megaphone, label: 'Communications' },
   ];
 
