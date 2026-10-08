@@ -13,11 +13,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// Add custom animation for pulse effect
-if (!document.getElementById('leaflet-pulse-style')) {
+// Hide Leaflet attribution and add custom animation
+if (!document.getElementById('leaflet-map-styles')) {
   const style = document.createElement('style');
-  style.id = 'leaflet-pulse-style';
+  style.id = 'leaflet-map-styles';
   style.textContent = `
+    .leaflet-control-attribution {
+      display: none !important;
+    }
     .pulse-dot {
       animation: pulse 2s infinite;
     }

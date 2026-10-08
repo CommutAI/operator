@@ -26,6 +26,18 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
+// Hide Leaflet attribution
+if (!document.getElementById('leaflet-attribution-hide')) {
+  const style = document.createElement('style');
+  style.id = 'leaflet-attribution-hide';
+  style.textContent = `
+    .leaflet-control-attribution {
+      display: none !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 interface KPICard {
   title: string;
   value: string | number;
