@@ -24,7 +24,6 @@ export default function Reports() {
 
   const fetchReportData = async () => {
     try {
-      console.log('Fetching report data for date range:', dateRange);
       const now = new Date();
       let startDate: Date;
       let applyDateFilter = true;
@@ -56,8 +55,6 @@ export default function Reports() {
 
       const endDate = customEndDate ? new Date(customEndDate) : now;
 
-      console.log('Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString(), applyDateFilter });
-
       let tripsQuery = supabase.from('trips').select('started_at, status');
       let passengersQuery = supabase.from('passenger_counts').select('recorded_at, count');
       let transactionsQuery = supabase.from('transactions').select('created_at, amount, type');
@@ -71,15 +68,6 @@ export default function Reports() {
       const { data: tripsData, error: tripsError } = await tripsQuery;
       const { data: passengersData, error: passengersError } = await passengersQuery;
       const { data: transactionsData, error: transactionsError } = await transactionsQuery;
-
-      console.log('Query results:', {
-        trips: tripsData?.length || 0,
-        passengers: passengersData?.length || 0,
-        transactions: transactionsData?.length || 0,
-        tripsError,
-        passengersError,
-        transactionsError
-      });
 
       if (tripsError) console.error('Trips error:', tripsError);
       if (passengersError) console.error('Passengers error:', passengersError);
@@ -122,7 +110,6 @@ export default function Reports() {
         new Date(a.date).getTime() - new Date(b.date).getTime()
       );
 
-      console.log('Grouped data:', data);
       setReportData(data);
       setLoading(false);
     } catch (error) {

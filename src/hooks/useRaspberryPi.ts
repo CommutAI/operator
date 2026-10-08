@@ -1,3 +1,7 @@
+// TODO: Implement actual Raspberry Pi integration
+// This is a stub hook for hardware integration - not yet implemented
+// For production, connect to actual Raspberry Pi via WebSocket/HTTP
+
 import { useRef, useState, useEffect, RefObject } from 'react';
 
 interface RaspberryPiConfig {
@@ -59,7 +63,6 @@ export const useRaspberryPi = (config: RaspberryPiConfig = {}): RaspberryPiState
   const [_raspberryPiUrl, _setRaspberryPiUrl] = useState('http://raspberrypi.local:8000');
 
   const refresh = () => {
-    console.log('Refreshing Raspberry Pi connection');
     setConnectionStatus('connecting');
     setTimeout(() => {
       setOnline(true);
@@ -68,17 +71,14 @@ export const useRaspberryPi = (config: RaspberryPiConfig = {}): RaspberryPiState
   };
 
   const startStream = () => {
-    console.log('Starting stream');
     _setIsStreaming(true);
   };
 
   const stopStream = () => {
-    console.log('Stopping stream');
     _setIsStreaming(false);
   };
 
   const connect = () => {
-    console.log('Connecting to Raspberry Pi');
     setConnectionStatus('connecting');
     setTimeout(() => {
       setOnline(true);

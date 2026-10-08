@@ -11,10 +11,31 @@ export default function Login() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePassword = (password: string): boolean => {
+    return password.length >= 6;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+
+    // Validate inputs
+    if (!email || !validateEmail(email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    if (!password || !validatePassword(password)) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -27,8 +48,6 @@ export default function Login() {
         throw error;
       }
 
-      console.log('Login successful:', data.user);
-      
       // Navigate to home/dashboard on successful login
       navigate('/');
     } catch (error: any) {
