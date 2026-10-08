@@ -194,7 +194,8 @@ export default function Dashboard() {
       const { data: passengerCounts } = await supabase
         .from('passenger_counts')
         .select('count, ai_count')
-        .gte('recorded_at', today);
+        .gte('recorded_at', today)
+        .limit(1000);
 
       const currentPassengers = passengerCounts?.reduce((sum, pc) => sum + (pc.count || 0), 0) || 0;
 
@@ -202,7 +203,8 @@ export default function Dashboard() {
       const { data: transactions } = await supabase
         .from('transactions')
         .select('amount')
-        .gte('created_at', today);
+        .gte('created_at', today)
+        .limit(1000);
 
       const fareCollectedToday = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
 
@@ -236,7 +238,8 @@ export default function Dashboard() {
         .from('transactions')
         .select('amount, type, created_at')
         .gte('created_at', sevenDaysAgo)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(1000);
 
       // Group revenue by date
       const revenueByDate: Record<string, any> = {};

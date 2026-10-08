@@ -55,9 +55,9 @@ export default function Reports() {
 
       const endDate = customEndDate ? new Date(customEndDate) : now;
 
-      let tripsQuery = supabase.from('trips').select('started_at, status');
-      let passengersQuery = supabase.from('passenger_counts').select('recorded_at, count');
-      let transactionsQuery = supabase.from('transactions').select('created_at, amount, type');
+      let tripsQuery = supabase.from('trips').select('started_at, status').limit(1000);
+      let passengersQuery = supabase.from('passenger_counts').select('recorded_at, count').limit(1000);
+      let transactionsQuery = supabase.from('transactions').select('created_at, amount, type').limit(1000);
 
       if (applyDateFilter) {
         tripsQuery = tripsQuery.gte('started_at', startDate.toISOString()).lte('started_at', endDate.toISOString());
