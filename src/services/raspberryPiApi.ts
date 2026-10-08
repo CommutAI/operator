@@ -7,6 +7,6 @@ export const getPiVideoFeedUrl = (_busId: string): string => {
   return '';
 };
 
-export const clearPiTrip = async (tripId: string): Promise<void> => {
+export const clearPiTrip = async (_tripId: string): Promise<void> => {
   // STUB: No-op - implement actual command to clear trip on Raspberry Pi
 };

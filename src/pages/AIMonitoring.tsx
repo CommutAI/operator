@@ -68,7 +68,7 @@ export default function AIMonitoring() {
       const history: DetectionEvent[] = [];
 
       // Add passenger count events
-      (passengerData || []).slice(0, 25).forEach((pc: any, index: number) => {
+      (passengerData || []).slice(0, 25).forEach((pc: any) => {
         const minutesAgo = Math.floor((Date.now() - new Date(pc.recorded_at).getTime()) / 60000);
         history.push({
           id: `pc-${pc.id}`,
