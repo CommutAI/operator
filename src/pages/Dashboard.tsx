@@ -26,21 +26,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// Hide Leaflet attribution and logo (only once)
-if (!document.getElementById('leaflet-style-override')) {
-  const style = document.createElement('style');
-  style.id = 'leaflet-style-override';
-  style.textContent = `
-    .leaflet-control-attribution {
-      display: none !important;
-    }
-    .leaflet-bottom {
-      display: none !important;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 interface KPICard {
   title: string;
   value: string | number;
