@@ -1,13 +1,11 @@
 -- ============================================================
--- CommutAI · Complete Database Schema
--- Run this in the Supabase SQL Editor on a clean slate.
--- All statements use IF NOT EXISTS / IF EXISTS guards so
--- re-running is safe.
+-- CommutAI · Operator-Only Database Schema
+-- Cleaned and simplified for operator dashboard use
 -- ============================================================
 
 -- ── 0. Custom Enum Types ──────────────────────────────────────────────────────
 DO $$ BEGIN
-  CREATE TYPE staff_role AS ENUM ('admin', 'conductor', 'cs_desk', 'operator');
+  CREATE TYPE staff_role AS ENUM ('operator');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -31,23 +29,19 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE TYPE transaction_type AS ENUM ('fare_validation', 'balance_topup', 'card_issuance');
+  CREATE TYPE transaction_type AS ENUM ('fare', 'baggage', 'topup', 'card_issuance');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE TYPE irregularity_type AS ENUM ('double_scan', 'count_mismatch', 'fare_evasion', 'other');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-DO $$ BEGIN
-  CREATE TYPE cs_action_type AS ENUM ('complaint', 'inquiry', 'refund', 'lost_card', 'other');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- ── 1. Staff Users ────────────────────────────────────────────────────────────
+-- ── 1. Staff Users (Operators Only) ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS staff_users (
   id          UUID        PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
   full_name   TEXT        NOT NULL,
   email       TEXT        NOT NULL UNIQUE,
-  role        staff_role  NOT NULL DEFAULT 'conductor',
+  role        staff_role  NOT NULL DEFAULT 'operator',
   phone       TEXT,
   is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -63,7 +57,7 @@ BEGIN
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
     NEW.email,
-    COALESCE((NEW.raw_user_meta_data->>'role')::staff_role, 'conductor'),
+    'operator',
     COALESCE(NEW.raw_user_meta_data->>'phone', NULL)
   )
   ON CONFLICT (id) DO UPDATE SET
@@ -75,8 +69,8 @@ BEGIN
   RETURN NEW;
 EXCEPTION
   WHEN OTHERS THEN
-    RAISE LOG 'Error creating staff_users record for user %: %', NEW.id, SQLERRM;
-    RETURN NEW;
+  RAISE LOG 'Error creating staff_users record for user %: %', NEW.id, SQLERRM;
+  RETURN NEW;
 END;
 $$;
 
@@ -107,7 +101,37 @@ BEGIN
   END IF;
 END $$;
 
--- Add card_type and purchase_price columns to qr_cards if they don't exist
+-- ── 3. Trips ──────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS trips (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  bus_id          UUID        NOT NULL REFERENCES buses (id),
+  operator_id     UUID        REFERENCES staff_users (id),
+  started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ended_at        TIMESTAMPTZ,
+  status          trip_status NOT NULL DEFAULT 'in_progress',
+  -- GPS tracking columns
+  current_lat     FLOAT8,
+  current_lng     FLOAT8,
+  gps_updated_at  TIMESTAMPTZ
+);
+
+-- ── 4. QR Cards ───────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS qr_cards (
+  id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_uid        TEXT           NOT NULL UNIQUE,
+  owner_name      TEXT           NOT NULL,
+  contact_number  TEXT,
+  balance         NUMERIC(10,2)  NOT NULL DEFAULT 0,
+  status          qr_card_status NOT NULL DEFAULT 'active',
+  card_type       card_type      NOT NULL DEFAULT 'regular',
+  purchase_price  NUMERIC(10,2)  NOT NULL DEFAULT 100.00,
+  allowed_routes  TEXT[]         DEFAULT '{}',
+  passenger_id    UUID,
+  issued_by       UUID           REFERENCES staff_users (id),
+  created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+);
+
+-- Add card_type and purchase_price columns if they don't exist
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -125,55 +149,6 @@ BEGIN
   END IF;
 END $$;
 
--- Update existing card_type values if enum was changed from old values
-DO $$
-BEGIN
-  -- Update 'elderly' to 'senior_citizen' if it exists
-  UPDATE qr_cards SET card_type = 'senior_citizen' WHERE card_type = 'elderly';
-  -- Update 'disabled' to 'pwd' if it exists
-  UPDATE qr_cards SET card_type = 'pwd' WHERE card_type = 'disabled';
-EXCEPTION WHEN others THEN
-  -- Ignore errors if the old values don't exist
-  NULL;
-END $$;
-
--- Update existing buses to have bus_number values based on plate_number
-DO $$
-BEGIN
-  UPDATE buses SET bus_number = 1001 WHERE plate_number = 'BUS-001' AND bus_number IS NULL;
-END $$;
-
--- ── 3. Trips ──────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS trips (
-  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  bus_id          UUID        NOT NULL REFERENCES buses (id),
-  conductor_id    UUID        NOT NULL REFERENCES staff_users (id),
-  operator_id     UUID        REFERENCES staff_users (id),
-  started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  ended_at        TIMESTAMPTZ,
-  status          trip_status NOT NULL DEFAULT 'in_progress',
-  -- GPS tracking columns (updated in real time by the conductor app)
-  current_lat     FLOAT8,
-  current_lng     FLOAT8,
-  gps_updated_at  TIMESTAMPTZ
-);
-
--- ── 4. QR Cards ───────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS qr_cards (
-  id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-  card_uid        TEXT           NOT NULL UNIQUE,
-  owner_name      TEXT           NOT NULL,
-  contact_number  TEXT,
-  balance         NUMERIC(10,2)  NOT NULL DEFAULT 0,
-  status          qr_card_status NOT NULL DEFAULT 'active',
-  card_type       card_type      NOT NULL DEFAULT 'regular',
-  purchase_price  NUMERIC(10,2)  NOT NULL DEFAULT 100.00,
-  allowed_routes  TEXT[]         DEFAULT '{}',
-  passenger_id    UUID,          -- links to a registered passenger if applicable
-  issued_by       UUID           REFERENCES staff_users (id),
-  created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-);
-
 -- ── 5. Temporary Tickets ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS temporary_tickets (
   id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -184,7 +159,7 @@ CREATE TABLE IF NOT EXISTS temporary_tickets (
   passenger_id    UUID,
   trip_id         UUID          REFERENCES trips (id),
   issued_by       UUID          REFERENCES staff_users (id),
-  issued_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  issued_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   validated_at    TIMESTAMPTZ
 );
 
@@ -196,7 +171,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   trip_id          UUID             REFERENCES trips (id),
   type             transaction_type NOT NULL,
   amount           NUMERIC(10,2)    NOT NULL,
-  channel          TEXT             NOT NULL, -- 'qr_card', 'temp_ticket', 'cash', 'card'
+  channel          TEXT             NOT NULL,
   staff_id         UUID             REFERENCES staff_users (id),
   created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
   -- Baggage-related columns
@@ -231,17 +206,16 @@ BEGIN
 END $$;
 
 -- ── 7. Passenger Counts ───────────────────────────────────────────────────────
--- Records periodic headcount snapshots (manual + AI-assisted) for video monitoring.
 CREATE TABLE IF NOT EXISTS passenger_counts (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id      UUID        NOT NULL REFERENCES trips (id) ON DELETE CASCADE,
   count        INTEGER     NOT NULL,
   recorded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  ai_count     INTEGER,    -- AI-estimated headcount from camera feed
-  source       TEXT        NOT NULL DEFAULT 'manual' -- 'manual' | 'ai' | 'scan'
+  ai_count     INTEGER,
+  source       TEXT        NOT NULL DEFAULT 'manual'
 );
 
--- Add video monitoring columns if they don't exist (for existing tables)
+-- Add video monitoring columns if they don't exist
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -260,11 +234,10 @@ BEGIN
 END $$;
 
 -- ── 8. Boarded Passengers ─────────────────────────────────────────────────────
--- One row per successful boarding event (QR card or temp ticket validated).
 CREATE TABLE IF NOT EXISTS boarded_passengers (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id         UUID        NOT NULL REFERENCES trips (id) ON DELETE CASCADE,
-  passenger_id    UUID,       -- optional link to a registered passenger profile
+  passenger_id    UUID,
   card_id         UUID        REFERENCES qr_cards (id),
   temp_ticket_id  UUID        REFERENCES temporary_tickets (id),
   boarded_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -272,7 +245,6 @@ CREATE TABLE IF NOT EXISTS boarded_passengers (
 );
 
 -- ── 9. GPS Logs ───────────────────────────────────────────────────────────────
--- Periodic position snapshots stored separately from the trip row for history.
 CREATE TABLE IF NOT EXISTS gps_logs (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id      UUID        NOT NULL REFERENCES trips (id) ON DELETE CASCADE,
@@ -297,11 +269,11 @@ CREATE TABLE IF NOT EXISTS fare_irregularities (
 CREATE TABLE IF NOT EXISTS emergency_alerts (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id          UUID        NOT NULL REFERENCES trips (id) ON DELETE CASCADE,
-  conductor_id     UUID        NOT NULL REFERENCES staff_users (id),
+  operator_id      UUID        NOT NULL REFERENCES staff_users (id),
   bus_id           UUID        REFERENCES buses (id),
   lat              FLOAT8,
   lng              FLOAT8,
-  status           TEXT        NOT NULL DEFAULT 'active', -- 'active' | 'acknowledged' | 'resolved'
+  status           TEXT        NOT NULL DEFAULT 'active',
   notes            TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   acknowledged_at  TIMESTAMPTZ,
@@ -310,11 +282,11 @@ CREATE TABLE IF NOT EXISTS emergency_alerts (
   triggered_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   location_lat     DECIMAL(10, 8),
   location_lng     DECIMAL(11, 8),
-  location_source  TEXT, -- 'gps', 'ip_geolocation', 'unknown'
+  location_source  TEXT,
   location_accuracy DECIMAL(10, 2)
 );
 
--- Add columns for hardware integration if they don't exist (for existing tables)
+-- Add columns for hardware integration if they don't exist
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -388,19 +360,17 @@ CREATE TRIGGER update_emergency_contacts_updated_at_trigger
   EXECUTE FUNCTION update_emergency_contacts_updated_at();
 
 -- ── 13. SMS Logs ───────────────────────────────────────────────────────────────
--- Hardware integration for SMS notifications
 CREATE TABLE IF NOT EXISTS sms_logs (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   phone_number    TEXT        NOT NULL,
   message         TEXT        NOT NULL,
-  sms_type        TEXT        NOT NULL, -- 'transaction', 'topup', 'reload', 'trip', 'emergency'
-  status          TEXT        NOT NULL DEFAULT 'sent', -- 'sent', 'failed', 'pending'
+  sms_type        TEXT        NOT NULL,
+  status          TEXT        NOT NULL DEFAULT 'sent',
   trip_id         UUID        REFERENCES trips (id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ── 14. GPS Locations ───────────────────────────────────────────────────────────
--- Hardware integration for GPS tracking
 CREATE TABLE IF NOT EXISTS gps_locations (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   latitude         DECIMAL(10, 8) NOT NULL,
@@ -408,7 +378,7 @@ CREATE TABLE IF NOT EXISTS gps_locations (
   altitude         DECIMAL(10, 2),
   speed            DECIMAL(10, 2),
   accuracy         DECIMAL(10, 2),
-  source           TEXT        NOT NULL, -- 'gps', 'ip_geolocation'
+  source           TEXT        NOT NULL,
   trip_id          UUID        REFERENCES trips (id),
   satellite_count  INTEGER,
   fix_quality      INTEGER,
@@ -417,46 +387,16 @@ CREATE TABLE IF NOT EXISTS gps_locations (
 );
 
 -- ── 15. Hardware Status ───────────────────────────────────────────────────────
--- Hardware integration for component monitoring
 CREATE TABLE IF NOT EXISTS hardware_status (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  component   TEXT        NOT NULL, -- 'sim900a', 'neo6m', 'emergency_button', 'camera'
-  status      TEXT        NOT NULL, -- 'online', 'offline', 'error', 'maintenance'
+  component   TEXT        NOT NULL,
+  status      TEXT        NOT NULL,
   details     JSONB,
   last_check  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── 16. Customer Service Logs ─────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS customer_service_logs (
-  id          UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-  trip_id     UUID           REFERENCES trips (id),
-  handled_by  UUID           REFERENCES staff_users (id),
-  action      cs_action_type NOT NULL,
-  description TEXT,
-  created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-);
-
--- ── 17. GCash Transactions ──────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS gcash_transactions (
-  id                BIGSERIAL PRIMARY KEY,
-  phone_number      TEXT        NOT NULL,
-  amount            NUMERIC     NOT NULL,
-  status            TEXT        NOT NULL CHECK (status IN ('completed', 'failed', 'pending')),
-  stripe_payment_id TEXT,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- ── 18. Notifications ──────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS notifications (
-  id         BIGSERIAL PRIMARY KEY,
-  message    TEXT        NOT NULL,
-  type       TEXT        DEFAULT 'info' CHECK (type IN ('alert', 'success', 'info')),
-  read       BOOLEAN     NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- ── 19. Fare Matrix ──────────────────────────────────────────────────────────────
+-- ── 16. Fare Matrix ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS fare_matrix (
   id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   route_from              TEXT        NOT NULL,
@@ -468,7 +408,7 @@ CREATE TABLE IF NOT EXISTS fare_matrix (
   CONSTRAINT unique_route UNIQUE (route_from, route_to)
 );
 
--- ── 19.1. Baggage Fee Matrix ──────────────────────────────────────────────────────
+-- ── 16.1. Baggage Fee Matrix ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS baggage_fee_matrix (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   category        TEXT        NOT NULL,
@@ -478,7 +418,7 @@ CREATE TABLE IF NOT EXISTS baggage_fee_matrix (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── 20. Bus Schedules ─────────────────────────────────────────────────────────────
+-- ── 17. Bus Schedules ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS bus_schedules (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   bus_id      UUID        NOT NULL REFERENCES buses (id),
@@ -488,7 +428,7 @@ CREATE TABLE IF NOT EXISTS bus_schedules (
   CONSTRAINT unique_bus_day_trip UNIQUE (bus_id, day_number, trip_number)
 );
 
--- ── 21. Trip Schedules ─────────────────────────────────────────────────────────────
+-- ── 18. Trip Schedules ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS trip_schedules (
   id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_number            INTEGER     NOT NULL CHECK (trip_number BETWEEN 1 AND 10),
@@ -500,18 +440,7 @@ CREATE TABLE IF NOT EXISTS trip_schedules (
   CONSTRAINT unique_trip_number UNIQUE (trip_number)
 );
 
--- ── 22. Audit Logs ──────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id          BIGSERIAL PRIMARY KEY,
-  username    TEXT        NOT NULL,
-  action      TEXT        DEFAULT 'info' CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'VIEW', 'EXPORT')),
-  module      TEXT,
-  details     TEXT,
-  ip_address  TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- ── 23. Announcements ──────────────────────────────────────────────────────────────
+-- ── 19. Announcements ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS announcements (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   title           TEXT        NOT NULL,
@@ -526,24 +455,14 @@ CREATE TABLE IF NOT EXISTS announcements (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── 24. Helper Functions ──────────────────────────────────────────────────────
--- Returns the active trip ID for the currently authenticated conductor
-CREATE OR REPLACE FUNCTION conductor_active_trip_id()
-RETURNS UUID LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT id FROM trips
-  WHERE conductor_id = auth.uid()
-    AND status = 'in_progress'
-  ORDER BY started_at DESC
-  LIMIT 1;
-$$;
-
+-- ── 20. Helper Functions ──────────────────────────────────────────────────────
 -- Returns the role of the authenticated user
 CREATE OR REPLACE FUNCTION current_user_role()
 RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT role::TEXT FROM staff_users WHERE id = auth.uid();
 $$;
 
--- ── 25. Row-Level Security ────────────────────────────────────────────────────
+-- ── 21. Row-Level Security ────────────────────────────────────────────────────
 ALTER TABLE staff_users           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE buses                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trips                 ENABLE ROW LEVEL SECURITY;
@@ -559,17 +478,13 @@ ALTER TABLE emergency_contacts    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sms_logs              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gps_locations         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hardware_status       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE customer_service_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE gcash_transactions    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fare_matrix            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE baggage_fee_matrix     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bus_schedules          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trip_schedules         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE announcements         ENABLE ROW LEVEL SECURITY;
 
--- Staff can view their own profile (admins see all)
+-- Staff can view their own profile
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
@@ -577,7 +492,7 @@ DO $$ BEGIN
   ) THEN
     CREATE POLICY "staff_users_self_select"
       ON staff_users FOR SELECT
-      USING (id = auth.uid() OR current_user_role() = 'admin');
+      USING (id = auth.uid());
   END IF;
 END $$;
 
@@ -594,7 +509,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Authenticated staff can read all buses
+-- Authenticated operators can read all buses
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
@@ -606,32 +521,20 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Conductors can read/write their own trips; admins see all
+-- Operators can read/write all trips
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'trips' AND policyname = 'trips_conductor_rw'
+    WHERE schemaname = 'public' AND tablename = 'trips' AND policyname = 'trips_operator_all'
   ) THEN
-    CREATE POLICY "trips_conductor_rw"
+    CREATE POLICY "trips_operator_all"
       ON trips FOR ALL
-      USING (conductor_id = auth.uid() OR current_user_role() = 'admin')
-      WITH CHECK (conductor_id = auth.uid());
+      USING (auth.role() = 'authenticated')
+      WITH CHECK (auth.role() = 'authenticated');
   END IF;
 END $$;
 
--- Operators can read all trips
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'trips' AND policyname = 'trips_operator_select'
-  ) THEN
-    CREATE POLICY "trips_operator_select"
-      ON trips FOR SELECT
-      USING (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
--- QR cards: read by any authenticated staff
+-- QR cards: read/write by authenticated operators
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
@@ -676,7 +579,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Temporary tickets: full access for authenticated staff
+-- Temporary tickets: full access for authenticated operators
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
@@ -689,7 +592,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Transactions: insert + select for authenticated staff
+-- Transactions: insert + select for authenticated operators
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
@@ -764,19 +667,6 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Operators can update fare irregularities
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'fare_irregularities' AND policyname = 'fare_irregularities_operator_update'
-  ) THEN
-    CREATE POLICY "fare_irregularities_operator_update"
-      ON fare_irregularities FOR UPDATE
-      USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
 -- Emergency alerts
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -785,19 +675,6 @@ DO $$ BEGIN
   ) THEN
     CREATE POLICY "emergency_alerts_rw_authenticated"
       ON emergency_alerts FOR ALL
-      USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
--- Operators can update emergency alerts
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'emergency_alerts' AND policyname = 'emergency_alerts_operator_update'
-  ) THEN
-    CREATE POLICY "emergency_alerts_operator_update"
-      ON emergency_alerts FOR UPDATE
       USING (auth.role() = 'authenticated')
       WITH CHECK (auth.role() = 'authenticated');
   END IF;
@@ -825,7 +702,7 @@ DO $$ BEGIN
     CREATE POLICY "sms_logs_rw_authenticated"
       ON sms_logs FOR ALL
       USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
+      WITH CHECK (auth.role() = authenticated');
   END IF;
 END $$;
 
@@ -838,7 +715,7 @@ DO $$ BEGIN
     CREATE POLICY "gps_locations_rw_authenticated"
       ON gps_locations FOR ALL
       USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
+      WITH CHECK (auth.role() = authenticated);
   END IF;
 END $$;
 
@@ -851,59 +728,7 @@ DO $$ BEGIN
     CREATE POLICY "hardware_status_rw_authenticated"
       ON hardware_status FOR ALL
       USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
--- Customer service logs
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'customer_service_logs' AND policyname = 'cs_logs_rw_authenticated'
-  ) THEN
-    CREATE POLICY "cs_logs_rw_authenticated"
-      ON customer_service_logs FOR ALL
-      USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
--- GCash transactions
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'gcash_transactions' AND policyname = 'gcash_transactions_rw_authenticated'
-  ) THEN
-    CREATE POLICY "gcash_transactions_rw_authenticated"
-      ON gcash_transactions FOR ALL
-      USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
--- Notifications
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'notifications' AND policyname = 'notifications_rw_authenticated'
-  ) THEN
-    CREATE POLICY "notifications_rw_authenticated"
-      ON notifications FOR ALL
-      USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
--- Audit logs
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'audit_logs' AND policyname = 'audit_logs_rw_authenticated'
-  ) THEN
-    CREATE POLICY "audit_logs_rw_authenticated"
-      ON audit_logs FOR ALL
-      USING (auth.role() = 'authenticated')
-      WITH CHECK (auth.role() = 'authenticated');
+      WITH CHECK (auth.role() = authenticated);
   END IF;
 END $$;
 
@@ -994,9 +819,9 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- ── 26. Indexes for Performance ───────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_trips_conductor_status
-  ON trips(conductor_id, status) WHERE status = 'in_progress';
+-- ── 22. Indexes for Performance ───────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_trips_bus_status
+  ON trips(bus_id, status) WHERE status = 'in_progress';
 
 CREATE INDEX IF NOT EXISTS idx_qr_cards_uid
   ON qr_cards(card_uid);
@@ -1092,366 +917,3 @@ SELECT
 FROM emergency_alerts
 GROUP BY COALESCE(DATE(triggered_at), DATE(created_at))
 ORDER BY date DESC;
-
-CREATE OR REPLACE VIEW gps_statistics AS
-SELECT 
-  DATE(recorded_at) as date,
-  source,
-  COUNT(*) as total_readings,
-  AVG(accuracy) as avg_accuracy,
-  AVG(speed) as avg_speed
-FROM gps_locations
-GROUP BY DATE(recorded_at), source
-ORDER BY date DESC, source;
-
-CREATE INDEX IF NOT EXISTS idx_gcash_transactions_created_at
-  ON gcash_transactions(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_gcash_transactions_status
-  ON gcash_transactions(status);
-
-CREATE INDEX IF NOT EXISTS idx_gcash_transactions_phone_number
-  ON gcash_transactions(phone_number);
-
-CREATE INDEX IF NOT EXISTS idx_notifications_created_at
-  ON notifications(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_notifications_read
-  ON notifications(read);
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
-  ON audit_logs(created_at);
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_username
-  ON audit_logs(username);
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action
-  ON audit_logs(action);
-
-CREATE INDEX IF NOT EXISTS idx_fare_matrix_route
-  ON fare_matrix(route_from, route_to);
-
-CREATE INDEX IF NOT EXISTS idx_baggage_fee_matrix_category
-  ON baggage_fee_matrix(category);
-
-CREATE INDEX IF NOT EXISTS idx_bus_schedules_bus_day
-  ON bus_schedules(bus_id, day_number);
-
-CREATE INDEX IF NOT EXISTS idx_bus_schedules_day_trip
-  ON bus_schedules(day_number, trip_number);
-
-CREATE INDEX IF NOT EXISTS idx_trip_schedules_trip_number
-  ON trip_schedules(trip_number);
-
--- Add index for announcements
-CREATE INDEX IF NOT EXISTS idx_announcements_status ON announcements(status);
-CREATE INDEX IF NOT EXISTS idx_announcements_dates ON announcements(start_date, end_date);
-
--- ── 27. Realtime Publications ─────────────────────────────────────────────────
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'passenger_counts'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE passenger_counts;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'fare_irregularities'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE fare_irregularities;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'emergency_alerts'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE emergency_alerts;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'trips'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE trips;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'boarded_passengers'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE boarded_passengers;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'emergency_contacts'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE emergency_contacts;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'sms_logs'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE sms_logs;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'gps_locations'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE gps_locations;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'hardware_status'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE hardware_status;
-  END IF;
-END $$;
-
--- Add announcements to realtime publication
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime' AND tablename = 'announcements'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE announcements;
-  END IF;
-END $$;
-
--- ============================================================
--- Schema complete.
--- ============================================================
-
--- ── 28. Seed: Test Bus Data ───────────────────────────────────────────────────
-INSERT INTO buses (plate_number, bus_number, route, seat_capacity, status) VALUES
-  ('BUS-001', 1001, 'Manalo Fortich Terminal ↔ Agora Terminal', 35, 'active')
-ON CONFLICT (plate_number) DO UPDATE SET
-  bus_number = EXCLUDED.bus_number,
-  route = EXCLUDED.route,
-  seat_capacity = EXCLUDED.seat_capacity,
-  status = EXCLUDED.status;
-
--- ── 29. Seed: Fare Matrix Data ─────────────────────────────────────────────────
-INSERT INTO fare_matrix (route_from, route_to, km_distance, regular_fare, discounted_fare) VALUES
-  ('Agora Terminal', 'Puerto', 13, 34.75, 27.75),
-  ('Agora Terminal', 'Ba-e', 16, 41.50, 33.00),
-  ('Agora Terminal', 'Mambatangan', 20, 50.25, 40.25),
-  ('Agora Terminal', 'Maitom', 24, 59.00, 47.25),
-  ('Agora Terminal', 'Ala-e', 26, 63.50, 50.75),
-  ('Agora Terminal', 'Lonocan', 27, 65.50, 52.50),
-  ('Agora Terminal', 'San Miguel', 31, 74.50, 59.50),
-  ('Agora Terminal', 'Diclum', 35, 83.25, 66.50),
-  ('Agora Terminal', 'Manolo Fortich', 36, 85.50, 68.25),
-  ('Puerto', 'Agora Terminal', 13, 34.75, 27.75),
-  ('Ba-e', 'Agora Terminal', 16, 41.50, 33.00),
-  ('Mambatangan', 'Agora Terminal', 20, 50.25, 40.25),
-  ('Maitom', 'Agora Terminal', 24, 59.00, 47.25),
-  ('Ala-e', 'Agora Terminal', 26, 63.50, 50.75),
-  ('Lonocan', 'Agora Terminal', 27, 65.50, 52.50),
-  ('San Miguel', 'Agora Terminal', 31, 74.50, 59.50),
-  ('Diclum', 'Agora Terminal', 35, 83.25, 66.50),
-  ('Manolo Fortich', 'Agora Terminal', 36, 85.50, 68.25)
-ON CONFLICT (route_from, route_to) DO NOTHING;
-
--- ── 29.1. Seed: Baggage Fee Matrix Data ─────────────────────────────────────────────
-INSERT INTO baggage_fee_matrix (category, max_weight_kg, fee, remarks) VALUES
-  ('Free Carry-on', 7, 0, 'Included in passenger fare'),
-  ('Small', 10, 20, 'Fits under seat or overhead area'),
-  ('Medium', 20, 40, 'Stored in baggage compartment'),
-  ('Large', 30, 60, 'Requires larger storage space'),
-  ('Oversized', 31, 100, 'Subject to conductor approval')
-ON CONFLICT DO NOTHING;
-
--- ── 30. Seed: Trip Schedule Data ─────────────────────────────────────────────────
-INSERT INTO trip_schedules (trip_number, arrival_time_start, arrival_time_end, departure_time_start, departure_time_end) VALUES
-  (1, '04:15:00', '04:25:00', '04:30:00', '04:30:00')
-ON CONFLICT (trip_number) DO NOTHING;
-
--- ── 31. Seed: Bus Schedule Data ───────────────────────────────────────────────────
--- Get bus IDs for scheduling
-DO $$
-DECLARE
-  bus_1001_id UUID;
-BEGIN
-  SELECT id INTO bus_1001_id FROM buses WHERE bus_number = 1001;
-
-  -- Insert bus schedules for Day 1
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 1, 9)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 2
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 2, 8)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 3
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 3, 7)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 4
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 4, 6)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 5
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 5, 5)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 6
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 6, 4)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 7
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 7, 3)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 8
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 8, 2)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 9
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-    (bus_1001_id, 9, 1)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-
-  -- Insert bus schedules for Day 10
-  INSERT INTO bus_schedules (bus_id, day_number, trip_number) VALUES
-     (bus_1001_id, 10, 10)
-  ON CONFLICT (bus_id, day_number, trip_number) DO NOTHING;
-END $$;
-
--- ── 32. Create Default Operator User ─────────────────────────────────────────────
--- To create operator user, follow these steps in the Supabase Dashboard:
---
--- 1. Go to Supabase Dashboard → Authentication → Users → Add user
--- 2. Email: operator@commutai.test  Password: Operator123!  Auto-confirm: Yes
--- 3. Copy the user UUID from the users table, then run:
---
---    INSERT INTO staff_users (id, full_name, email, role, is_active)
---    VALUES (
---      '<paste-uuid-here>',
---      'System Operator',
---      'operator@commutai.test',
---      'operator',
---      true
---    );
-
--- ── 33. Create Test User Instructions ─────────────────────────────────────────────
--- To create test users, follow these steps in the Supabase Dashboard:
---
--- 1. Go to Supabase Dashboard → Authentication → Users → Add user
--- 2. Email: admin@commutai.test  Password: Admin123!  Auto-confirm: Yes
--- 3. Copy the user UUID from the users table, then run:
---
---    INSERT INTO staff_users (id, full_name, email, role, is_active)
---    VALUES (
---      '<paste-uuid-here>',
---      'System Admin',
---      'admin@commutai.test',
---      'admin',
---      true
---    );
---
--- 4. Repeat for conductor:
---    Email: conductor@commutai.test  Password: Conductor123!
---    Role: conductor
---
--- 5. Repeat for CS Desk:
---    Email: csdesk@commutai.test  Password: CSDesk123!
---    Role: cs_desk
-
--- ── 34. Maintenance & Utility Queries ──────────────────────────────────────────────
--- These queries can be run as needed for maintenance tasks
-
--- ── 34.1. Update Staff User Roles ──────────────────────────────────────────────────
--- Update a specific user's role to customer service desk
--- UPDATE staff_users 
--- SET role = 'cs_desk' 
--- WHERE id = '1654f098-c2b0-4ab3-9f59-6cf6fb2fafba';
-
--- Update all admin users to cs_desk (run this to convert all admins to customer service desk)
--- UPDATE staff_users 
--- SET role = 'cs_desk' 
--- WHERE role = 'admin';
-
--- ── 34.2. Fix Inconsistent Card Data ────────────────────────────────────────────────
--- Fix card data inconsistencies (run as needed when card data becomes inconsistent)
-
--- Fix specific card (SC-170-60-383 - should be Student)
--- UPDATE qr_cards 
--- SET 
---   passenger_type = 'student',
---   card_type = 'student',
---   allowed_routes = ARRAY['type:Student']
--- WHERE card_uid = 'SC-170-60-383';
-
--- Fix incorrectly formatted card (CARDMSJVQL2G - incorrect format, should be RC- format)
--- UPDATE qr_cards 
--- SET 
---   card_uid = 'RC-' || substr(md5(random()::text), 1, 3) || '-' || substr(md5(random()::text), 4, 2) || '-' || substr(md5(random()::text), 6, 3),
---   passenger_type = 'regular',
---   card_type = 'regular',
---   allowed_routes = ARRAY['type:Regular']
--- WHERE card_uid = 'CARDMSJVQL2G';
-
--- Fix specific card (SC-787-07-359 - should be Student, not regular)
--- UPDATE qr_cards 
--- SET 
---   passenger_type = 'student',
---   card_type = 'student',
---   allowed_routes = ARRAY['type:Student']
--- WHERE card_uid = 'SC-787-07-359';
-
--- ── 34.3. System Admin Role Management ────────────────────────────────────────────────
--- These queries help manage system admin access and permissions
-
--- Grant admin role to a specific user
--- UPDATE staff_users 
--- SET role = 'admin' 
--- WHERE id = '<user-uuid-here>';
-
--- Remove admin role from a specific user (convert to cs_desk)
--- UPDATE staff_users 
--- SET role = 'cs_desk' 
--- WHERE id = '<user-uuid-here>';
-
--- List all admin users
--- SELECT id, full_name, email, role, is_active, created_at 
--- FROM staff_users 
--- WHERE role = 'admin';
-
--- List all users with their roles
--- SELECT id, full_name, email, role, is_active, created_at 
--- FROM staff_users 
--- ORDER BY role, full_name;
-
--- ============================================================
--- Complete schema with operator role integration finished.
--- ============================================================
