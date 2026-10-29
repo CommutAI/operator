@@ -8,10 +8,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AIMonitoring from './pages/AIMonitoring';
 import Transactions from './pages/Transactions';
-import Announcements from './pages/Announcements';
 import Reports from './pages/Reports';
-import VideoMonitoring from './pages/VideoMonitoring';
-import LiveMap from './pages/LiveMap';
+import TripManagement from './pages/TripManagement';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,12 +36,10 @@ function App() {
               }
             >
               <Route index element={<Dashboard />} />
-              <Route path="ai-monitoring" element={<AIMonitoring />} />
+              <Route path="trips" element={<TripManagement />} />
               <Route path="transactions" element={<Transactions />} />
-              <Route path="announcements" element={<Announcements />} />
               <Route path="reports" element={<Reports />} />
-              <Route path="video-monitoring" element={<VideoMonitoring />} />
-              <Route path="live-map" element={<LiveMap />} />
+              <Route path="ai-monitoring" element={<AIMonitoring />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

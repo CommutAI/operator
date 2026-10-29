@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Receipt, Search, DollarSign, Clock, Bus, User } from 'lucide-react';
+import { Receipt, Search, DollarSign, Clock, Bus, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePagination } from '../hooks/usePagination';
 
 interface Transaction {
   id: string;
@@ -15,12 +16,15 @@ interface Transaction {
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('daily');
   const [typeFilter, setTypeFilter] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+
+  const { currentPage, itemsPerPage, totalPages, goToPage, nextPage, prevPage, getRange } = usePagination(totalCount, { itemsPerPage: 20 });
 
   useEffect(() => {
     fetchTransactions();
@@ -33,33 +37,17 @@ export default function Transactions() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [dateFilter, customStartDate, customEndDate]);
+  }, [dateFilter, customStartDate, customEndDate, currentPage, itemsPerPage]);
 
   const fetchTransactions = async () => {
     try {
-      let query = supabase
-        .from('transactions')
-        .select(`
-          id,
-          amount,
-          type,
-          created_at,
-          qr_cards (card_uid),
-          trips!inner (
-            id,
-            conductor_id,
-            buses (bus_number, route)
-          ),
-          staff_id
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100);
+      setLoading(true);
 
       // Apply date filter
       const now = new Date();
       let startDate: Date;
       let applyDateFilter = true;
-      
+
       switch (dateFilter) {
         case 'daily':
           startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -85,10 +73,77 @@ export default function Transactions() {
           startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       }
 
+      // First, get the total count
+      let countQuery = supabase
+        .from('transactions')
+        .select('*', { count: 'exact', head: true });
+
       if (applyDateFilter) {
         const endDate = customEndDate ? new Date(customEndDate) : now;
-        query = query.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString());
+        const startDateStr = startDate.toISOString();
+        const endDateStr = endDate.toISOString();
+        countQuery = countQuery.gte('created_at', startDateStr).lte('created_at', endDateStr);
+      } else {
+        // No date filter, just get total count
       }
+
+      const { count } = await countQuery;
+      setTotalCount(count || 0);
+
+      // Then fetch the paginated data
+      const { from, to } = getRange();
+
+      // Calculate date range first
+      switch (dateFilter) {
+        case 'daily':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'weekly':
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case 'monthly':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'yearly':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        case 'custom':
+          startDate = customStartDate ? new Date(customStartDate) : new Date(0);
+          break;
+        case 'all':
+          applyDateFilter = false;
+          startDate = new Date(0);
+          break;
+        default:
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      }
+
+      let query = supabase
+        .from('transactions')
+        .select(`
+          id,
+          amount,
+          type,
+          created_at,
+          qr_cards (card_uid),
+          trips (
+            id,
+            conductor_id,
+            buses (bus_number, route)
+          ),
+          staff_id
+        `)
+        .order('created_at', { ascending: false });
+
+      if (applyDateFilter) {
+        const endDate = customEndDate ? new Date(customEndDate) : now;
+        const startDateStr = startDate.toISOString();
+        const endDateStr = endDate.toISOString();
+        query = query.gte('created_at', startDateStr).lte('created_at', endDateStr);
+      }
+
+      query = query.range(from, to);
 
       const { data, error } = await query;
 
@@ -115,7 +170,7 @@ export default function Transactions() {
         bus_number: tx.trips?.buses?.bus_number || 0,
         route: tx.trips?.buses?.route || 'Unknown',
         conductor_name: userMap.get(tx.trips?.conductor_id) || userMap.get(tx.staff_id) || 'Unknown',
-        card_number: tx.qr_cards?.card_uid,
+        card_number: tx.qr_cards?.card_uid || 'N/A',
         created_at: tx.created_at,
       }));
 
@@ -123,6 +178,8 @@ export default function Transactions() {
       setLoading(false);
     } catch (error) {
       console.error('Error fetching transactions:', error);
+      setTransactions([]);
+      setTotalCount(0);
       setLoading(false);
     }
   };
@@ -132,7 +189,7 @@ export default function Transactions() {
       tx.bus_number.toString().includes(searchTerm) ||
       tx.route.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tx.conductor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.card_number?.includes(searchTerm);
+      (tx.card_number && tx.card_number !== 'N/A' && tx.card_number.includes(searchTerm));
 
     const matchesType = typeFilter === 'all' || tx.type === typeFilter;
 
@@ -206,7 +263,7 @@ export default function Transactions() {
             <div>
               <p className="text-white/60 text-sm">Unique Cards</p>
               <p className="text-white text-2xl font-bold">
-                {new Set(transactions.map(t => t.card_number)).size}
+                {new Set(transactions.map(t => t.card_number).filter(c => c && c !== 'N/A')).size}
               </p>
             </div>
           </div>
@@ -293,54 +350,84 @@ export default function Transactions() {
             <p className="text-white/40">No transactions found</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Type</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Amount</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Conductor</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Card Number</th>
-                  <th className="text-left py-3 px-4 text-white/60 font-medium">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTransactions.map((tx) => (
-                  <tr key={tx.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                    <td className="py-4 px-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTypeColor(tx.type)}`}>
-                        {tx.type}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className="text-white font-medium">₱{Number(tx.amount).toFixed(2)}</span>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className="text-white">#{tx.bus_number}</span>
-                    </td>
-                    <td className="py-4 px-4 text-white/80">{tx.route}</td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-2 text-white/80">
-                        <User size={16} />
-                        <span>{tx.conductor_name}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4 text-white/80 font-mono text-sm">
-                      {tx.card_number || 'N/A'}
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-2 text-white/60">
-                        <Clock size={16} />
-                        <span>{new Date(tx.created_at).toLocaleString()}</span>
-                      </div>
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-white/10">
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Type</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Amount</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Conductor</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Card Number</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Time</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredTransactions.map((tx) => (
+                    <tr key={tx.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td className="py-4 px-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTypeColor(tx.type)}`}>
+                          {tx.type}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <span className="text-white font-medium">₱{Number(tx.amount).toFixed(2)}</span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <span className="text-white">#{tx.bus_number}</span>
+                      </td>
+                      <td className="py-4 px-4 text-white/80">{tx.route}</td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-2 text-white/80">
+                          <User size={16} />
+                          <span>{tx.conductor_name}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-white/80 font-mono text-sm">
+                        {tx.card_number || 'N/A'}
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-2 text-white/60">
+                          <Clock size={16} />
+                          <span>{new Date(tx.created_at).toLocaleString()}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
+                <span className="text-white/60 text-sm">
+                  Showing {currentPage * itemsPerPage + 1} to {Math.min((currentPage + 1) * itemsPerPage, totalCount)} of {totalCount} transactions
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={prevPage}
+                    disabled={currentPage === 0}
+                    className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-white/60 text-sm">
+                    Page {currentPage + 1} of {totalPages}
+                  </span>
+                  <button
+                    onClick={nextPage}
+                    disabled={currentPage === totalPages - 1}
+                    className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

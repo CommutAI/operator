@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
 
 export default function Login() {
@@ -10,6 +11,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { signIn } = useAuth();
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,15 +40,27 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Query staff_users directly for authentication
+      const { data: user, error } = await supabase
+        .from('staff_users')
+        .select('*')
+        .eq('email', email)
+        .eq('password', password)
+        .eq('is_active', true)
+        .single();
 
-      if (error) {
-        console.error('Login error:', error);
-        throw error;
+      if (error || !user) {
+        throw new Error('Invalid email or password');
       }
+
+      // Update last_login_at
+      await supabase
+        .from('staff_users')
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('id', user.id);
+
+      // Sign in using AuthContext to update state immediately
+      signIn(user);
 
       // Navigate to home/dashboard on successful login
       navigate('/');
