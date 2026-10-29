@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  signIn: (user: StaffUser) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,71 +19,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkUser();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session?.user) {
-          fetchUserProfile(session.user.id);
-        } else {
-          setUser(null);
-        }
-      }
-    );
-
-    return () => subscription.unsubscribe();
   }, []);
 
   const checkUser = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await fetchUserProfile(session.user.id);
+      // Check localStorage for user
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const userData = JSON.parse(storedUser);
+        // Verify user still exists and is active in database
+        const { data, error } = await supabase
+          .from('staff_users')
+          .select('*')
+          .eq('id', userData.id)
+          .eq('is_active', true)
+          .single();
+
+        if (error || !data) {
+          localStorage.removeItem('user');
+          setUser(null);
+        } else {
+          setUser(data);
+        }
       }
     } catch (error) {
       console.error('Error checking user:', error);
+      localStorage.removeItem('user');
+      setUser(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      
-      // Check if user is operator
-      if (data && data.role === 'operator') {
-        setUser(data);
-      } else {
-        // Sign out if not operator
-        await supabase.auth.signOut();
-        setUser(null);
-        toast.error('Access denied. Only operators can access this dashboard.');
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      setUser(null);
-    }
-  };
-
   const signOut = async () => {
-    await supabase.auth.signOut();
+    localStorage.removeItem('user');
     setUser(null);
   };
 
   const refreshUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      await fetchUserProfile(session.user.id);
+    if (user) {
+      const { data, error } = await supabase
+        .from('staff_users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error refreshing user:', error);
+      } else if (data) {
+        setUser(data);
+        localStorage.setItem('user', JSON.stringify(data));
+      }
     }
   };
 
+  const signIn = (userData: StaffUser) => {
+    setUser(userData);
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, signOut, refreshUser, signIn }}>
       {children}
     </AuthContext.Provider>
   );

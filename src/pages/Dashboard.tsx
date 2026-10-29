@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   Bus, Users, DollarSign, Activity, AlertTriangle,
-  Map as MapIcon, TrendingUp, Zap, Navigation, ArrowUp, ArrowDown
+  Map as MapIcon, TrendingUp, Zap, Navigation, ArrowUp, ArrowDown, Video, RefreshCw, CheckCircle
 } from 'lucide-react';
+import { useBackendVideo } from '../hooks/useBackendVideo';
 import {
   LineChart,
   Line,
@@ -145,6 +146,15 @@ export default function Dashboard() {
   const [tripsSortColumn, setTripsSortColumn] = useState<'started_at' | 'bus_number' | 'route'>('started_at');
   const [tripsSortDirection, setTripsSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  // Backend video streaming
+  const {
+    isStreaming: videoStreaming,
+    passengerCount: videoPassengerCount,
+    connectionStatus: videoConnectionStatus,
+    videoRef,
+    refresh: videoRefresh,
+  } = useBackendVideo({ autoConnect: false });
+
   useEffect(() => {
     fetchDashboardData();
     
@@ -190,11 +200,13 @@ export default function Dashboard() {
       setActiveTrips(trips || []);
 
       // Fetch passenger counts for today
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString();
       const { data: passengerCounts } = await supabase
         .from('passenger_counts')
         .select('count, ai_count')
-        .gte('recorded_at', today)
+        .gte('recorded_at', todayStr)
         .limit(1000);
 
       const currentPassengers = passengerCounts?.reduce((sum, pc) => sum + (pc.count || 0), 0) || 0;
@@ -203,7 +215,7 @@ export default function Dashboard() {
       const { data: transactions } = await supabase
         .from('transactions')
         .select('amount')
-        .gte('created_at', today)
+        .gte('created_at', todayStr)
         .limit(1000);
 
       const fareCollectedToday = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
@@ -223,21 +235,30 @@ export default function Dashboard() {
         .limit(3);
 
       // Count buses with recent GPS updates (last 5 minutes)
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { data: tripsWithGPS } = await supabase
-        .from('trips')
-        .select('id')
-        .eq('status', 'in_progress')
-        .gte('gps_updated_at', fiveMinutesAgo);
-
-      const busesOnline = tripsWithGPS?.length || 0;
+      let busesOnline = 0;
+      try {
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const { data: tripsWithGPS } = await supabase
+          .from('trips')
+          .select('id')
+          .eq('status', 'in_progress')
+          .gte('gps_updated_at', fiveMinutesAgo.toISOString());
+        busesOnline = tripsWithGPS?.length || 0;
+      } catch (error) {
+        // If gps_updated_at column doesn't exist, count all active trips
+        const { data: activeTripsCount } = await supabase
+          .from('trips')
+          .select('id')
+          .eq('status', 'in_progress');
+        busesOnline = activeTripsCount?.length || 0;
+      }
 
       // Fetch chart data - last 7 days revenue
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const { data: chartTransactions } = await supabase
         .from('transactions')
         .select('amount, type, created_at')
-        .gte('created_at', sevenDaysAgo)
+        .gte('created_at', sevenDaysAgo.toISOString())
         .order('created_at', { ascending: true })
         .limit(1000);
 
@@ -333,27 +354,6 @@ export default function Dashboard() {
         };
       });
 
-      // Add inactive buses
-      const usedLatestGps = busMarkers.some((bus: any) => bus.locationUpdatedAt === latestGpsAny?.recordedAt);
-      const inactiveBuses = (allBuses || [])
-        .filter((bus: any) => bus.status !== 'active' || !activeTrips?.some((t: any) => t.bus_id === bus.id))
-        .map((bus: any, index: number) => {
-          const gps = !usedLatestGps && index === 0 ? latestGpsAny : null;
-
-          return {
-            id: bus.id,
-            plate: bus.plate_number,
-            route: bus.route,
-            lat: gps?.lat ?? 8.429,
-            lng: gps?.lng ?? 124.762,
-            passengers: 0,
-            status: bus.status === 'maintenance' ? 'maintenance' : 'idle',
-            locationSource: gps ? `${gps.source} (latest GPS)` : 'fallback',
-            locationUpdatedAt: gps?.recordedAt || null,
-            busId: bus.id
-          };
-        });
-
       // Fetch passenger counts for active trips
       const tripIds = (activeTrips || []).map((t: any) => t.id);
       let totalPassengers = 0;
@@ -380,7 +380,8 @@ export default function Dashboard() {
         });
       }
 
-      setMapBuses([...busMarkers, ...inactiveBuses] as any);
+      // Only show active buses (those with in-progress trips)
+      setMapBuses(busMarkers as any);
 
       // Calculate stats
       const uniqueRoutes = [...new Set((allBuses || []).map((b: any) => b.route))];
@@ -473,6 +474,26 @@ export default function Dashboard() {
     }
   };
 
+  const handleResolveAlert = async (alertId: string) => {
+    try {
+      const { error } = await supabase
+        .from('emergency_alerts')
+        .update({
+          status: 'resolved',
+          resolved_at: new Date().toISOString()
+        })
+        .eq('id', alertId);
+
+      if (error) throw error;
+
+      // Refresh alerts
+      await fetchDashboardData();
+    } catch (error) {
+      console.error('Error resolving alert:', error);
+      alert('Error resolving alert');
+    }
+  };
+
   const kpiCards: KPICard[] = [
     {
       title: 'Active Buses',
@@ -528,11 +549,11 @@ export default function Dashboard() {
         {kpiCards.map((kpi, index) => {
           const Icon = kpi.icon;
           return (
-            <div 
-              key={index} 
+            <div
+              key={index}
               className={`glass-card p-6 hover:bg-white/10 transition-all duration-300 ${
-                kpi.highlight 
-                  ? 'ring-2 ring-yellow-400/50 ring-offset-2 ring-offset-black bg-gradient-to-br from-yellow-500/10 to-transparent' 
+                kpi.highlight
+                  ? 'ring-2 ring-yellow-400/50 ring-offset-2 ring-offset-black bg-gradient-to-br from-yellow-500/10 to-transparent'
                   : ''
               }`}
             >
@@ -558,6 +579,58 @@ export default function Dashboard() {
             </div>
           );
         })}
+      </div>
+
+      {/* Video Monitoring - Dashboard Widget */}
+      <div className="glass-card p-6 border-2 border-orange-500/20">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Video className="text-orange-400" size={20} />
+            Video Monitoring
+          </h2>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+            <span className="text-white/60 text-sm">{videoConnectionStatus}</span>
+            <button
+              onClick={videoRefresh}
+              className="bg-white/10 hover:bg-white/20 text-white p-1 rounded transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="relative bg-black rounded-lg h-64 overflow-hidden">
+          <img
+            ref={videoRef}
+            alt="Live video feed"
+            className={`absolute inset-0 w-full h-full object-contain ${videoStreaming ? 'block' : 'hidden'}`}
+          />
+          {!videoStreaming && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <Video className="text-white/30 mx-auto mb-2" size={32} />
+                <p className="text-white/40 text-sm">
+                  {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : 'Video feed unavailable'}
+                </p>
+              </div>
+            </div>
+          )}
+          {videoStreaming && (
+            <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1 flex items-center gap-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span className="text-white text-xs font-medium">LIVE</span>
+            </div>
+          )}
+          {videoStreaming && (
+            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1">
+              <div className="flex items-center gap-1">
+                <Users size={12} className="text-orange-400" />
+                <span className="text-white text-xs font-bold">{videoPassengerCount}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Live Map - Embedded */}
@@ -753,15 +826,19 @@ export default function Dashboard() {
             {alerts.map((alert: any) => (
               <div key={alert.id} className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
                 <div className="flex items-start justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-white font-medium">{alert.notes || 'Emergency Alert'}</p>
                     <p className="text-white/60 text-xs mt-1">
                       {new Date(alert.created_at).toLocaleString()}
                     </p>
                   </div>
-                  <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-full font-medium">
-                    Active
-                  </span>
+                  <button
+                    onClick={() => handleResolveAlert(alert.id)}
+                    className="ml-4 px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                  >
+                    <CheckCircle size={14} />
+                    Resolve
+                  </button>
                 </div>
               </div>
             ))}

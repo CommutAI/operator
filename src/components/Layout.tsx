@@ -6,13 +6,11 @@ import {
   Receipt,
   Brain,
   FileText,
-  Megaphone,
   User,
   LogOut,
   Menu,
   X,
-  Video,
-  Map as MapIcon
+  Bus
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boolean) => void }) => {
@@ -27,27 +25,27 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
 
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/trips', icon: Bus, label: 'Trip Management' },
     { path: '/transactions', icon: Receipt, label: 'Card Management' },
     { path: '/reports', icon: FileText, label: 'Reports' },
     { path: '/ai-monitoring', icon: Brain, label: 'AI Monitoring' },
-    { path: '/video-monitoring', icon: Video, label: 'Video Monitoring' },
-    { path: '/live-map', icon: MapIcon, label: 'Live Map' },
-    { path: '/announcements', icon: Megaphone, label: 'Communications' },
   ];
 
   const isItemActive = (path: string) => location.pathname === path;
 
   return (
-    <aside className={`glass-sidebar fixed left-0 top-0 h-full z-50 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'}`}>
+    <aside className={`glass-sidebar fixed left-0 top-0 h-full z-50 transition-all duration-300 flex flex-col ${isOpen ? 'w-64' : 'w-20'}`}>
       <div className="p-4 flex items-center justify-between border-b border-white/10">
-        <div className="flex items-center gap-2">
-          <img 
-            src="/logo.png" 
-            alt="CommutAI Logo" 
-            className="w-10 h-10"
-          />
-          {isOpen && <span className="text-white font-bold text-xl">CommutAI</span>}
-        </div>
+        {isOpen && (
+          <div className="flex items-center gap-2">
+            <img
+              src="/logo.png"
+              alt="CommutAI Logo"
+              className="w-10 h-10"
+            />
+            <span className="text-white font-bold text-xl">CommutAI</span>
+          </div>
+        )}
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="text-white hover:text-orange-400 transition-colors"
@@ -56,7 +54,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
         </button>
       </div>
 
-      <nav className="p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-160px)]">
+      <nav className="p-4 space-y-2 overflow-y-auto flex-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = isItemActive(item.path);
@@ -77,10 +75,10 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
         })}
       </nav>
 
-      <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
+      <div className="p-4 border-t border-white/10">
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3 w-full text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+          className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-red-400 hover:bg-red-500/20 hover:text-red-300`}
         >
           <LogOut size={20} />
           {isOpen && <span className="font-medium">Logout</span>}
@@ -93,8 +91,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
 const Header = () => {
   return (
     <header className="glass-card h-16 flex items-center justify-between px-6 mb-6">
-      <div className="flex items-center gap-4">
-      </div>
+      <div></div>
       <div className="flex items-center gap-4">
         <div className="text-right">
           <p className="text-white font-medium">Operations Center</p>

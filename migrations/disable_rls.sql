@@ -1,0 +1,13 @@
+-- Disable RLS on all tables needed for the dashboard
+ALTER TABLE public.staff_users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.buses DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trips DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.passenger_counts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fare_irregularities DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.emergency_alerts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gps_locations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.qr_cards DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.temporary_tickets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.boarded_passengers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.announcements DISABLE ROW LEVEL SECURITY;
