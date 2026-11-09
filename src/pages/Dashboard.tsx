@@ -601,41 +601,93 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        <div className="relative bg-black rounded-lg h-96 overflow-hidden">
-          <img
-            ref={videoRef}
-            alt="Live video feed"
-            className={`absolute inset-0 w-full h-full object-contain ${videoStreaming ? 'block' : 'hidden'}`}
-          />
-          {!videoStreaming && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <Video className="text-white/30 mx-auto mb-2" size={32} />
-                <p className="text-white/40 text-sm">
-                  {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : videoConnectionMessage || 'Video feed unavailable'}
-                </p>
-                {videoConnectionStatus === 'connected' && (
-                  <p className="text-white/30 text-xs mt-2">
-                    No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.
+        <div className="grid grid-cols-3 gap-4">
+          {/* Video Feed */}
+          <div className="col-span-2 relative bg-black rounded-lg h-96 overflow-hidden">
+            <img
+              ref={videoRef}
+              alt="Live video feed"
+              className={`absolute inset-0 w-full h-full object-contain ${videoStreaming ? 'block' : 'hidden'}`}
+            />
+            {!videoStreaming && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <Video className="text-white/30 mx-auto mb-2" size={32} />
+                  <p className="text-white/40 text-sm">
+                    {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : videoConnectionMessage || 'Video feed unavailable'}
                   </p>
-                )}
+                  {videoConnectionStatus === 'connected' && (
+                    <p className="text-white/30 text-xs mt-2">
+                      No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {videoStreaming && (
+              <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1 flex items-center gap-2">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-white text-xs font-medium">LIVE</span>
+              </div>
+            )}
+            {videoStreaming && (
+              <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1">
+                <div className="flex items-center gap-1">
+                  <Users size={12} className="text-orange-400" />
+                  <span className="text-white text-xs font-bold">{videoPassengerCount}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Video Details Sidebar */}
+          <div className="col-span-1 space-y-3">
+            <div className="glass-card p-3">
+              <div className="text-white/70 text-xs mb-2">Current Status</div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400' : 'bg-red-400'}`} />
+                <span className="text-white text-sm font-medium">
+                  {videoStreaming ? 'Streaming' : 'Offline'}
+                </span>
               </div>
             </div>
-          )}
-          {videoStreaming && (
-            <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1 flex items-center gap-2">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-white text-xs font-medium">LIVE</span>
-            </div>
-          )}
-          {videoStreaming && (
-            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1">
-              <div className="flex items-center gap-1">
-                <Users size={12} className="text-orange-400" />
-                <span className="text-white text-xs font-bold">{videoPassengerCount}</span>
+            
+            <div className="glass-card p-3">
+              <div className="text-white/70 text-xs mb-2">Passenger Count</div>
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-orange-400" />
+                <span className="text-white text-2xl font-bold">{videoPassengerCount}</span>
               </div>
             </div>
-          )}
+            
+            <div className="glass-card p-3">
+              <div className="text-white/70 text-xs mb-2">Connection</div>
+              <div className="text-white text-sm">
+                {videoConnectionStatus}
+              </div>
+            </div>
+            
+            <div className="glass-card p-3">
+              <div className="text-white/70 text-xs mb-2">AI Detection</div>
+              <div className="flex items-center gap-2">
+                <Activity size={16} className="text-blue-400" />
+                <span className="text-white text-sm font-medium">YOLOv8n</span>
+              </div>
+            </div>
+            
+            <div className="glass-card p-3">
+              <div className="text-white/70 text-xs mb-2">Resolution</div>
+              <div className="text-white text-sm">640x480 @ 30fps</div>
+            </div>
+            
+            <button
+              onClick={videoRefresh}
+              className="w-full py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              <RefreshCw size={14} />
+              Refresh Feed
+            </button>
+          </div>
         </div>
       </div>
 
