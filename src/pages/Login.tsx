@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
+import bcrypt from 'bcryptjs';
+import { StaffUser } from '../types';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -40,16 +42,42 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Query staff_users directly for authentication
-      const { data: user, error } = await supabase
+      // Get user by email (including password for verification)
+      const { data: user, error: fetchError } = await supabase
         .from('staff_users')
-        .select('*')
+        .select('id, full_name, email, role, is_active, created_at, password')
         .eq('email', email)
-        .eq('password', password)
         .eq('is_active', true)
         .single();
 
-      if (error || !user) {
+      if (fetchError || !user) {
+        throw new Error('Invalid email or password');
+      }
+
+      // Check if password is hashed (bcrypt hashes start with $2a$ or $2b$)
+      const isHashed = user.password.startsWith('$2a$') || user.password.startsWith('$2b$');
+
+      let passwordMatch = false;
+
+      if (isHashed) {
+        // Compare with bcrypt
+        passwordMatch = await bcrypt.compare(password, user.password);
+      } else {
+        // Plain text comparison (legacy - will upgrade on successful login)
+        passwordMatch = password === user.password;
+
+        // Upgrade to bcrypt on successful login
+        if (passwordMatch) {
+          const saltRounds = 10;
+          const hashedPassword = await bcrypt.hash(password, saltRounds);
+          await supabase
+            .from('staff_users')
+            .update({ password: hashedPassword })
+            .eq('id', user.id);
+        }
+      }
+
+      if (!passwordMatch) {
         throw new Error('Invalid email or password');
       }
 
@@ -59,8 +87,11 @@ export default function Login() {
         .update({ last_login_at: new Date().toISOString() })
         .eq('id', user.id);
 
+      // Remove password from user object before storing
+      const { password: _, ...userWithoutPassword } = user as any;
+
       // Sign in using AuthContext to update state immediately
-      signIn(user);
+      signIn(userWithoutPassword as StaffUser);
 
       // Navigate to home/dashboard on successful login
       navigate('/');

@@ -491,7 +491,9 @@ export default function Dashboard() {
       await fetchDashboardData();
     } catch (error) {
       console.error('Error resolving alert:', error);
-      alert('Error resolving alert');
+      // Use toast notification instead of alert
+      const { toast } = await import('react-hot-toast');
+      toast.error('Error resolving alert');
     }
   };
 

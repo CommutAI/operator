@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
 import { StaffUser } from '../types';
 
+const SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
+
 interface AuthContextType {
   user: StaffUser | null;
   loading: boolean;
@@ -23,20 +25,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkUser = async () => {
     try {
-      // Check localStorage for user
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        const userData = JSON.parse(storedUser);
+      // Check localStorage for session
+      const sessionData = localStorage.getItem('operator_session');
+      if (sessionData) {
+        const { userId, loginTime } = JSON.parse(sessionData);
+
+        // Check if session has expired
+        const now = Date.now();
+        if (now - loginTime > SESSION_DURATION) {
+          localStorage.removeItem('operator_session');
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
         // Verify user still exists and is active in database
         const { data, error } = await supabase
           .from('staff_users')
-          .select('*')
-          .eq('id', userData.id)
+          .select('id, email, full_name, role, is_active, created_at')
+          .eq('id', userId)
           .eq('is_active', true)
           .single();
 
         if (error || !data) {
-          localStorage.removeItem('user');
+          localStorage.removeItem('operator_session');
           setUser(null);
         } else {
           setUser(data);
@@ -44,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('Error checking user:', error);
-      localStorage.removeItem('user');
+      localStorage.removeItem('operator_session');
       setUser(null);
     } finally {
       setLoading(false);
@@ -52,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    localStorage.removeItem('user');
+    localStorage.removeItem('operator_session');
     setUser(null);
   };
 
@@ -60,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user) {
       const { data, error } = await supabase
         .from('staff_users')
-        .select('*')
+        .select('id, email, full_name, role, is_active, created_at')
         .eq('id', user.id)
         .single();
 
@@ -68,14 +80,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Error refreshing user:', error);
       } else if (data) {
         setUser(data);
-        localStorage.setItem('user', JSON.stringify(data));
       }
     }
   };
 
   const signIn = (userData: StaffUser) => {
     setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
+    // Store minimal session data: only userId and login time
+    localStorage.setItem('operator_session', JSON.stringify({
+      userId: userData.id,
+      loginTime: Date.now()
+    }));
   };
 
   return (

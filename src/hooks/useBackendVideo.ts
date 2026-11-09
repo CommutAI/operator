@@ -4,7 +4,6 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getPersistedIp, discoverRaspberryPi } from '../services/piAutoDiscovery';
 
 const HEARTBEAT_MS = 30_000;
 
@@ -24,28 +23,10 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
   const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const deadRef = useRef(false);
 
-  // Auto-detect Pi IP from localStorage
-  const [piUrl, setPiUrl] = useState(() => {
-    const piIp = getPersistedIp();
-    return piIp ? `http://${piIp}:5000` : null;
-  });
-
-  const wsUrl = piUrl ? piUrl.replace(/^http/, 'ws') + '/ws' : null;
-
-  // Auto-discover Pi if no IP is persisted
-  useEffect(() => {
-    if (!getPersistedIp()) {
-      console.log('[Backend Video] No persisted IP, starting discovery...');
-      discoverRaspberryPi().then(ip => {
-        console.log('[Backend Video] Discovery result:', ip);
-        if (ip) {
-          setPiUrl(`http://${ip}:5000`);
-        }
-      });
-    } else {
-      console.log('[Backend Video] Using persisted IP:', getPersistedIp());
-    }
-  }, []);
+  // Use hardcoded Pi IP for now (same as system-admin)
+  const piIp = '192.168.1.54';
+  const piUrl = `http://${piIp}:5000`;
+  const wsUrl = piUrl.replace('http', 'ws') + '/ws';
 
   function clearTimers() {
     if (heartbeatTimer.current !== null) {
@@ -63,16 +44,6 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
   const connect = useCallback(() => {
     if (deadRef.current) return;
 
-    if (!piUrl) {
-      console.log('[Backend Video] No Pi URL configured');
-      setConnectionStatus('not configured');
-      setConnectionMessage('No Raspberry Pi IP configured. Click refresh to discover Pi.');
-      setIsStreaming(false);
-      setError(null);
-      return;
-    }
-
-    console.log('[Backend Video] Connecting to:', piUrl);
     closeSocket(wsRef.current);
     wsRef.current = null;
     clearTimers();
@@ -83,9 +54,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
     setIsStreaming(false);
 
     try {
-      const currentWsUrl = piUrl.replace(/^http/, 'ws') + '/ws';
-      console.log('[Backend Video] WebSocket URL:', currentWsUrl);
-      const ws = new WebSocket(currentWsUrl);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -132,7 +101,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
             setIsStreaming(true);
           }
         } catch (err) {
-          console.error('[Backend Video] Error parsing message:', err);
+          // Silent error handling for video streaming
         }
       };
 
@@ -149,17 +118,15 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
       };
 
       ws.onerror = (err) => {
-        console.error('[Backend Video] WebSocket error:', err);
         if (!deadRef.current) {
           setError('Connection error');
         }
       };
     } catch (err) {
-      console.error('[Backend Video] Connection error:', err);
       setError('Failed to connect');
       setConnectionStatus('error');
     }
-  }, [piUrl]);
+  }, [wsUrl]);
 
   const disconnect = useCallback(() => {
     clearTimers();
@@ -177,12 +144,8 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
   useEffect(() => {
     deadRef.current = false;
 
-    console.log('[Backend Video] useEffect triggered', { autoConnect, piUrl });
-    if (autoConnect && piUrl) {
-      console.log('[Backend Video] Calling connect()');
+    if (autoConnect) {
       connect();
-    } else {
-      console.log('[Backend Video] Not connecting - autoConnect:', autoConnect, 'piUrl:', piUrl);
     }
 
     return () => {
@@ -191,7 +154,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
       closeSocket(wsRef.current);
       wsRef.current = null;
     };
-  }, [autoConnect, connect, disconnect, piUrl]);
+  }, [autoConnect, connect, disconnect]);
 
   return {
     isStreaming,
