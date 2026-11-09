@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Users, Video, Activity, Clock, ChevronLeft, ChevronRight, ArrowUpDown, CheckCircle, XCircle, Filter } from 'lucide-react';
+import { AlertTriangle, Users, Video, Activity, Clock, ChevronLeft, ChevronRight, ArrowUpDown, CheckCircle, XCircle, Filter, RefreshCw } from 'lucide-react';
 import { useBackendVideo } from '../hooks/useBackendVideo';
 
 interface DetectionEvent {
