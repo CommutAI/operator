@@ -8,6 +8,8 @@ import { useBackendVideo } from '../hooks/useBackendVideo';
 import {
   LineChart,
   Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -845,31 +847,70 @@ export default function Dashboard() {
             <TrendingUp className="text-green-400" size={20} />
             Revenue (7 Days)
           </h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={revenueData}>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={revenueData}>
+              <defs>
+                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorFare" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis 
-                dataKey="date" 
-                stroke="rgba(255,255,255,0.6)" 
-                tick={{ fontSize: 10 }}
+              <XAxis
+                dataKey="date"
+                stroke="rgba(255,255,255,0.6)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(value) => {
+                  const date = new Date(value);
+                  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }}
               />
-              <YAxis 
-                stroke="rgba(255,255,255,0.6)" 
-                tick={{ fontSize: 10 }}
+              <YAxis
+                stroke="rgba(255,255,255,0.6)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
               />
               <Tooltip
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.2)' }}
+                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px' }}
                 itemStyle={{ color: 'white' }}
+                labelStyle={{ color: 'rgba(255,255,255,0.8)' }}
                 formatter={(value: any) => `₱${Number(value || 0).toLocaleString()}`}
               />
               <Legend />
-              <Line type="monotone" dataKey="total" stroke="#22c55e" name="Total" strokeWidth={2} dot={false} />
-            </LineChart>
+              <Area
+                type="monotone"
+                dataKey="total"
+                stroke="#22c55e"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#colorTotal)"
+                name="Total Revenue"
+              />
+              <Area
+                type="monotone"
+                dataKey="fare"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#colorFare)"
+                name="Fare Revenue"
+              />
+            </AreaChart>
           </ResponsiveContainer>
-          <div className="mt-4 pt-4 border-t border-white/10">
+          <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-white/60 text-sm">Today's Revenue</span>
               <span className="text-white font-bold">₱{kpiData.fareCollectedToday.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-white/60 text-sm">7-Day Total</span>
+              <span className="text-green-400 font-bold">
+                ₱{revenueData.reduce((sum, d) => sum + d.total, 0).toLocaleString()}
+              </span>
             </div>
           </div>
         </div>
