@@ -21,10 +21,6 @@ interface Irregularity {
   trip_id: string;
   resolved: boolean;
   resolved_at?: string;
-  buses?: {
-    plate_number: string;
-    route: string;
-  };
 }
 
 export default function AIMonitoring() {
@@ -61,11 +57,6 @@ export default function AIMonitoring() {
   const nextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1));
   const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 0));
 
-  const getRange = () => ({
-    from: currentPage * itemsPerPage,
-    to: Math.min((currentPage + 1) * itemsPerPage - 1, historyCount - 1)
-  });
-
   useEffect(() => {
     fetchStats();
 
@@ -83,7 +74,7 @@ export default function AIMonitoring() {
       irregularitySubscription.unsubscribe();
       passengerSubscription.unsubscribe();
     };
-  }, [currentPage]);
+  }, []);
 
   const fetchStats = async () => {
     try {
@@ -94,12 +85,12 @@ export default function AIMonitoring() {
           .eq('resolved', false),
         supabase
           .from('passenger_counts')
-          .select('count, recorded_at, trip_id, trips(*)')
+          .select('count, recorded_at, trip_id, trips(buses(*))')
           .order('recorded_at', { ascending: false })
           .limit(100),
         supabase
           .from('fare_irregularities')
-          .select('*, trips(*, buses(*))')
+          .select('*, trips(buses(*))')
           .order('detected_at', { ascending: false })
           .limit(50)
       ]);
@@ -118,9 +109,10 @@ export default function AIMonitoring() {
       // Add passenger count events
       (passengerData || []).forEach((pc: any) => {
         const minutesAgo = Math.floor((Date.now() - new Date(pc.recorded_at).getTime()) / 60000);
+        const busNumber = pc.trips?.buses?.bus_number || pc.trips?.buses?.plate_number || 'Unknown';
         history.push({
           id: `pc-${pc.id}`,
-          bus: pc.trips?.buses?.plate_number || 'Unknown',
+          bus: busNumber,
           event: `Detected ${pc.count} passengers`,
           time: minutesAgo < 1 ? 'Just now' : `${minutesAgo} min ago`,
           timeValue: minutesAgo,
@@ -132,9 +124,10 @@ export default function AIMonitoring() {
       // Add irregularity events
       (irregularitiesData || []).forEach((irr: any) => {
         const minutesAgo = Math.floor((Date.now() - new Date(irr.detected_at).getTime()) / 60000);
+        const busNumber = irr.trips?.buses?.bus_number || irr.trips?.buses?.plate_number || 'Unknown';
         history.push({
           id: irr.id,
-          bus: irr.trips?.buses?.plate_number || 'Unknown',
+          bus: busNumber,
           event: `Fare irregularity: ${irr.description || 'Unknown'}`,
           time: minutesAgo < 1 ? 'Just now' : `${minutesAgo} min ago`,
           timeValue: minutesAgo,
@@ -147,12 +140,8 @@ export default function AIMonitoring() {
       // Sort by time
       const sortedHistory = history.sort((a, b) => a.timeValue - b.timeValue);
 
-      // Set total count
-      setHistoryCount(sortedHistory.length);
-
-      // Apply pagination
-      const { from, to } = getRange();
-      setDetectionHistory(sortedHistory.slice(from, to + 1));
+      // Set all history data
+      setDetectionHistory(sortedHistory);
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -548,7 +537,7 @@ export default function AIMonitoring() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-white font-medium">{irr.description || 'Fare irregularity detected'}</span>
-                      <span className="text-white/60 text-xs">Bus: {irr.buses?.plate_number || 'Unknown'}</span>
+                      <span className="text-white/60 text-xs">Trip ID: {irr.trip_id?.slice(0, 8) || 'Unknown'}...</span>
                     </div>
                     <p className="text-white/60 text-xs">
                       Detected: {new Date(irr.detected_at).toLocaleString()}

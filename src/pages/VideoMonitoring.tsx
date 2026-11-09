@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Video, Users, AlertCircle, Wifi, WifiOff, RefreshCw, CheckCircle, Loader2, Search } from 'lucide-react';
+import { Video, Users, AlertCircle, Wifi, WifiOff, RefreshCw, CheckCircle, Loader2 } from 'lucide-react';
 import { useBackendVideo } from '../hooks/useBackendVideo';
-import { discoverRaspberryPi } from '../services/piAutoDiscovery';
 
 // Connection stages and their progress %
 const CONNECTION_STAGES = {
@@ -17,8 +16,6 @@ interface VideoMonitoringProps {
 }
 
 const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
-  const [isDiscovering, setIsDiscovering] = useState(false);
-  
   // Backend video streaming (YOLOv8n processed)
   const {
     isStreaming: backendStreaming,
@@ -28,20 +25,6 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
     videoRef: backendVideoRef,
     refresh: backendRefresh,
   } = useBackendVideo({ autoConnect: autoConnect });
-
-  const handleDiscoverPi = async () => {
-    setIsDiscovering(true);
-    try {
-      const ip = await discoverRaspberryPi();
-      if (ip) {
-        backendRefresh();
-      }
-    } catch (error) {
-      console.error('Discovery failed:', error);
-    } finally {
-      setIsDiscovering(false);
-    }
-  };
 
   // Use backend values
   const isStreaming = backendStreaming;
@@ -155,29 +138,6 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
                     <p className="text-white/60 text-lg">Connected to backend</p>
                     <p className="text-white/30 text-sm mt-1">{backendMessage || 'Waiting for video stream from Raspberry Pi...'}</p>
                     <p className="text-white/30 text-xs mt-2">No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.</p>
-                  </>
-                ) : connectionStatus === 'not configured' ? (
-                  <>
-                    <Search className="w-12 h-12 text-orange-400 mx-auto mb-4" />
-                    <p className="text-white/60 text-lg mb-2">Raspberry Pi not found</p>
-                    <p className="text-white/30 text-sm mb-4">{backendMessage || 'Click below to discover Pi on your network'}</p>
-                    <button
-                      onClick={handleDiscoverPi}
-                      disabled={isDiscovering}
-                      className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm flex items-center gap-2 mx-auto transition-colors disabled:opacity-50"
-                    >
-                      {isDiscovering ? (
-                        <>
-                          <Loader2 size={14} className="animate-spin" />
-                          Discovering...
-                        </>
-                      ) : (
-                        <>
-                          <Search size={14} />
-                          Discover Pi
-                        </>
-                      )}
-                    </button>
                   </>
                 ) : (
                   <>

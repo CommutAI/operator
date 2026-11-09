@@ -239,7 +239,7 @@ export default function TripManagement() {
                         <div className="flex items-center gap-2">
                           <Bus size={16} className="text-orange-400" />
                           <span className="text-white font-medium">
-                            {trip.buses?.plate_number || 'N/A'}
+                            {trip.buses?.bus_number || trip.buses?.plate_number || 'N/A'}
                           </span>
                         </div>
                       </td>

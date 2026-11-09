@@ -3,135 +3,84 @@ import { supabase } from '../lib/supabase';
 import { Receipt, Search, DollarSign, Clock, Bus, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePagination } from '../hooks/usePagination';
 
-interface Transaction {
+interface QRCard {
   id: string;
-  amount: number;
-  type: string;
-  bus_number: number;
-  route: string;
-  conductor_name: string;
-  card_number?: string;
-  card_id?: string;
-  trip_id?: string;
-  staff_id?: string;
+  card_uid: string;
+  owner_name: string;
+  contact_number: string;
+  email: string | null;
+  balance: number;
+  status: string;
+  card_type: string;
+  purchase_price: number;
+  allowed_routes: string[];
+  passenger_id: string | null;
+  destination: string | null;
+  issued_by: string | null;
+  issued_at: string;
+  expires_at: string;
+  last_used_at: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export default function Transactions() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [cards, setCards] = useState<QRCard[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('daily');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
 
   const { currentPage, itemsPerPage, totalPages, goToPage, nextPage, prevPage, getRange } = usePagination(totalCount, { itemsPerPage: 20 });
 
   useEffect(() => {
-    fetchTransactions();
+    fetchCards();
 
     const subscription = supabase
-      .channel('transaction-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, fetchTransactions)
+      .channel('card-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'qr_cards' }, fetchCards)
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [dateFilter, customStartDate, customEndDate, currentPage, itemsPerPage]);
+  }, [statusFilter, typeFilter, currentPage, itemsPerPage]);
 
-  const fetchTransactions = async () => {
+  const fetchCards = async () => {
     try {
       setLoading(true);
 
-      // Apply date filter
-      const now = new Date();
-      let startDate: Date;
-      let applyDateFilter = true;
-
-      switch (dateFilter) {
-        case 'daily':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case 'weekly':
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case 'monthly':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case 'yearly':
-          startDate = new Date(now.getFullYear(), 0, 1);
-          break;
-        case 'custom':
-          startDate = customStartDate ? new Date(customStartDate) : new Date(0);
-          break;
-        case 'all':
-          applyDateFilter = false;
-          startDate = new Date(0);
-          break;
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      }
-
-      // First, get the total count
+      // Get total count
       let countQuery = supabase
-        .from('transactions')
+        .from('qr_cards')
         .select('*', { count: 'exact', head: true });
 
-      if (applyDateFilter) {
-        const endDate = customEndDate ? new Date(customEndDate) : now;
-        const startDateStr = startDate.toISOString();
-        const endDateStr = endDate.toISOString();
-        countQuery = countQuery.gte('created_at', startDateStr).lte('created_at', endDateStr);
-      } else {
-        // No date filter, just get total count
+      if (statusFilter !== 'all') {
+        countQuery = countQuery.eq('status', statusFilter);
+      }
+
+      if (typeFilter !== 'all') {
+        countQuery = countQuery.eq('card_type', typeFilter);
       }
 
       const { count } = await countQuery;
       setTotalCount(count || 0);
 
-      // Then fetch the paginated data
+      // Fetch paginated data
       const { from, to } = getRange();
 
-      // Calculate date range first
-      switch (dateFilter) {
-        case 'daily':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case 'weekly':
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case 'monthly':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case 'yearly':
-          startDate = new Date(now.getFullYear(), 0, 1);
-          break;
-        case 'custom':
-          startDate = customStartDate ? new Date(customStartDate) : new Date(0);
-          break;
-        case 'all':
-          applyDateFilter = false;
-          startDate = new Date(0);
-          break;
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      }
-
       let query = supabase
-        .from('transactions')
+        .from('qr_cards')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (applyDateFilter) {
-        const endDate = customEndDate ? new Date(customEndDate) : now;
-        const startDateStr = startDate.toISOString();
-        const endDateStr = endDate.toISOString();
-        query = query.gte('created_at', startDateStr).lte('created_at', endDateStr);
+      if (statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
+      }
+
+      if (typeFilter !== 'all') {
+        query = query.eq('card_type', typeFilter);
       }
 
       query = query.range(from, to);
@@ -139,106 +88,53 @@ export default function Transactions() {
       const { data, error } = await query;
 
       if (error) {
-        console.error('Error fetching transactions:', error);
+        console.error('Error fetching cards:', error);
         throw error;
       }
 
-      const transactionsData: Transaction[] = (data || []).map((tx: any) => ({
-        id: tx.id,
-        amount: tx.amount,
-        type: tx.type,
-        bus_number: 0, // Will be updated if trip info available
-        route: 'Unknown',
-        conductor_name: 'System',
-        card_number: 'N/A',
-        created_at: tx.created_at,
-      }));
-
-      // If transactions exist, try to get related data
-      if (transactionsData.length > 0) {
-        try {
-          // Fetch cards
-          const cardIds = [...new Set(transactionsData.map(t => t.card_id).filter(Boolean))];
-          if (cardIds.length > 0) {
-            const { data: cards } = await supabase
-              .from('qr_cards')
-              .select('id, card_uid')
-              .in('id', cardIds);
-            const cardMap = new Map((cards || []).map((c: any) => [c.id, c.card_uid]));
-            transactionsData.forEach(t => {
-              if (t.card_id && cardMap.has(t.card_id)) {
-                t.card_number = cardMap.get(t.card_id);
-              }
-            });
-          }
-
-          // Fetch trips and buses
-          const tripIds = [...new Set(transactionsData.map(t => t.trip_id).filter(Boolean))];
-          if (tripIds.length > 0) {
-            const { data: trips } = await supabase
-              .from('trips')
-              .select('id, conductor_id, buses(bus_number, route)')
-              .in('id', tripIds);
-            const tripMap = new Map((trips || []).map((t: any) => [t.id, t]));
-            transactionsData.forEach(t => {
-              if (t.trip_id && tripMap.has(t.trip_id)) {
-                const trip = tripMap.get(t.trip_id);
-                t.bus_number = trip.buses?.bus_number || 0;
-                t.route = trip.buses?.route || 'Unknown';
-              }
-            });
-          }
-
-          // Fetch staff
-          const staffIds = [...new Set(transactionsData.map(t => t.staff_id).filter(Boolean))];
-          if (staffIds.length > 0) {
-            const { data: staff } = await supabase
-              .from('staff_users')
-              .select('id, full_name')
-              .in('id', staffIds);
-            const staffMap = new Map((staff || []).map((s: any) => [s.id, s.full_name]));
-            transactionsData.forEach(t => {
-              if (t.staff_id && staffMap.has(t.staff_id)) {
-                t.conductor_name = staffMap.get(t.staff_id);
-              }
-            });
-          }
-        } catch (err) {
-          console.error('Error fetching related data:', err);
-          // Continue with basic transaction data
-        }
-      }
-
-      setTransactions(transactionsData);
+      setCards(data || []);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      setTransactions([]);
+      console.error('Error fetching cards:', error);
+      setCards([]);
       setTotalCount(0);
       setLoading(false);
     }
   };
 
-  const filteredTransactions = transactions.filter(tx => {
+  const filteredCards = cards.filter(card => {
     const matchesSearch =
-      tx.bus_number.toString().includes(searchTerm) ||
-      tx.route.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.conductor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (tx.card_number && tx.card_number !== 'N/A' && tx.card_number.includes(searchTerm));
+      card.card_uid.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      card.owner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (card.contact_number && card.contact_number.includes(searchTerm)) ||
+      (card.email && card.email.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    const matchesType = typeFilter === 'all' || tx.type === typeFilter;
+    const matchesStatus = statusFilter === 'all' || card.status === statusFilter;
+    const matchesType = typeFilter === 'all' || card.card_type === typeFilter;
 
-    return matchesSearch && matchesType;
+    return matchesSearch && matchesStatus && matchesType;
   });
 
-  const totalRevenue = filteredTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
-  const totalTransactions = filteredTransactions.length;
+  const totalBalance = filteredCards.reduce((sum, card) => sum + Number(card.balance), 0);
+  const totalCards = filteredCards.length;
 
-  const getTypeColor = (type: string) => {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'text-green-400 bg-green-500/20';
+      case 'inactive': return 'text-gray-400 bg-gray-500/20';
+      case 'lost': return 'text-red-400 bg-red-500/20';
+      case 'replaced': return 'text-yellow-400 bg-yellow-500/20';
+      case 'deactivated': return 'text-purple-400 bg-purple-500/20';
+      default: return 'text-white/60 bg-white/10';
+    }
+  };
+
+  const getCardTypeColor = (type: string) => {
     switch (type) {
-      case 'fare': return 'text-green-400 bg-green-500/20';
-      case 'baggage': return 'text-orange-400 bg-orange-500/20';
-      case 'penalty': return 'text-red-400 bg-red-500/20';
+      case 'regular': return 'text-blue-400 bg-blue-500/20';
+      case 'student': return 'text-purple-400 bg-purple-500/20';
+      case 'senior_citizen': return 'text-orange-400 bg-orange-500/20';
+      case 'pwd': return 'text-pink-400 bg-pink-500/20';
       default: return 'text-white/60 bg-white/10';
     }
   };
@@ -258,58 +154,58 @@ export default function Transactions() {
               <DollarSign size={24} />
             </div>
             <div>
-              <p className="text-white/60 text-sm">Total Revenue</p>
-              <p className="text-white text-2xl font-bold">₱{totalRevenue.toLocaleString()}</p>
+              <p className="text-white/60 text-sm">Total Balance</p>
+              <p className="text-white text-2xl font-bold">₱{totalBalance.toLocaleString()}</p>
             </div>
           </div>
         </div>
-        
+
         <div className="glass-card p-4">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-lg bg-blue-500/20 text-blue-400">
               <Receipt size={24} />
             </div>
             <div>
-              <p className="text-white/60 text-sm">Transactions</p>
-              <p className="text-white text-2xl font-bold">{totalTransactions}</p>
+              <p className="text-white/60 text-sm">Total Cards</p>
+              <p className="text-white text-2xl font-bold">{totalCards}</p>
             </div>
           </div>
         </div>
-        
+
         <div className="glass-card p-4">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-lg bg-purple-500/20 text-purple-400">
               <Bus size={24} />
             </div>
             <div>
-              <p className="text-white/60 text-sm">Avg Transaction</p>
+              <p className="text-white/60 text-sm">Avg Balance</p>
               <p className="text-white text-2xl font-bold">
-                ₱{totalTransactions > 0 ? (totalRevenue / totalTransactions).toFixed(2) : '0.00'}
+                ₱{totalCards > 0 ? (totalBalance / totalCards).toFixed(2) : '0.00'}
               </p>
             </div>
           </div>
         </div>
-        
+
         <div className="glass-card p-4">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-lg bg-orange-500/20 text-orange-400">
               <User size={24} />
             </div>
             <div>
-              <p className="text-white/60 text-sm">Unique Cards</p>
+              <p className="text-white/60 text-sm">Active Cards</p>
               <p className="text-white text-2xl font-bold">
-                {new Set(transactions.map(t => t.card_number).filter(c => c && c !== 'N/A')).size}
+                {filteredCards.filter(c => c.status === 'active').length}
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Transaction List */}
+      {/* Card List */}
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white">Transaction History</h2>
-          <span className="text-white/60">{filteredTransactions.length} records</span>
+          <h2 className="text-xl font-bold text-white">QR Cards</h2>
+          <span className="text-white/60">{filteredCards.length} records</span>
         </div>
 
         {/* Search Bar and Filters */}
@@ -318,7 +214,7 @@ export default function Transactions() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40" size={20} />
             <input
               type="text"
-              placeholder="Search by bus, route, conductor, or card number..."
+              placeholder="Search by card ID, owner name, or contact number..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-orange-500"
@@ -327,16 +223,16 @@ export default function Transactions() {
 
           <div className="flex items-center gap-2">
             <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
               className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
             >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-              <option value="custom">Custom Range</option>
-              <option value="all">All Time</option>
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="lost">Lost</option>
+              <option value="replaced">Replaced</option>
+              <option value="deactivated">Deactivated</option>
             </select>
 
             <select
@@ -345,44 +241,22 @@ export default function Transactions() {
               className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
             >
               <option value="all">All Types</option>
-              <option value="fare">Fare</option>
-              <option value="baggage">Baggage</option>
-              <option value="penalty">Penalty</option>
+              <option value="regular">Regular</option>
+              <option value="student">Student</option>
+              <option value="senior_citizen">Senior Citizen</option>
+              <option value="pwd">PWD</option>
             </select>
           </div>
         </div>
 
-        {dateFilter === 'custom' && (
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex-1">
-              <label className="text-white/60 text-sm mb-1 block">Start Date</label>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="text-white/60 text-sm mb-1 block">End Date</label>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-orange-500"
-              />
-            </div>
-          </div>
-        )}
-
         {loading ? (
           <div className="text-center py-8">
-            <div className="text-white">Loading transactions...</div>
+            <div className="text-white">Loading cards...</div>
           </div>
-        ) : filteredTransactions.length === 0 ? (
+        ) : filteredCards.length === 0 ? (
           <div className="text-center py-8">
             <Receipt className="text-white/20 mx-auto mb-2" size={48} />
-            <p className="text-white/40">No transactions found</p>
+            <p className="text-white/40">No cards found</p>
           </div>
         ) : (
           <>
@@ -390,44 +264,38 @@ export default function Transactions() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/10">
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Card ID</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Owner Name</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Contact</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Balance</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Status</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Type</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Amount</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Bus</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Route</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Conductor</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Card Number</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Time</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Destination</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Issued At</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTransactions.map((tx) => (
-                    <tr key={tx.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                  {filteredCards.map((card) => (
+                    <tr key={card.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td className="py-4 px-4 text-white/80 font-mono text-sm">{card.card_uid}</td>
+                      <td className="py-4 px-4 text-white font-medium">{card.owner_name}</td>
+                      <td className="py-4 px-4 text-white/80">{card.contact_number}</td>
                       <td className="py-4 px-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTypeColor(tx.type)}`}>
-                          {tx.type}
+                        <span className="text-white font-medium">₱{Number(card.balance).toFixed(2)}</span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(card.status)}`}>
+                          {card.status}
                         </span>
                       </td>
                       <td className="py-4 px-4">
-                        <span className="text-white font-medium">₱{Number(tx.amount).toFixed(2)}</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getCardTypeColor(card.card_type)}`}>
+                          {card.card_type.replace('_', ' ')}
+                        </span>
                       </td>
-                      <td className="py-4 px-4">
-                        <span className="text-white">#{tx.bus_number}</span>
-                      </td>
-                      <td className="py-4 px-4 text-white/80">{tx.route}</td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center gap-2 text-white/80">
-                          <User size={16} />
-                          <span>{tx.conductor_name}</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-4 text-white/80 font-mono text-sm">
-                        {tx.card_number || 'N/A'}
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center gap-2 text-white/60">
-                          <Clock size={16} />
-                          <span>{new Date(tx.created_at).toLocaleString()}</span>
-                        </div>
+                      <td className="py-4 px-4 text-white/80">{card.destination || 'N/A'}</td>
+                      <td className="py-4 px-4 text-white/60 text-sm">
+                        {new Date(card.issued_at).toLocaleDateString()}
                       </td>
                     </tr>
                   ))}
@@ -439,7 +307,7 @@ export default function Transactions() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
                 <span className="text-white/60 text-sm">
-                  Showing {currentPage * itemsPerPage + 1} to {Math.min((currentPage + 1) * itemsPerPage, totalCount)} of {totalCount} transactions
+                  Showing {currentPage * itemsPerPage + 1} to {Math.min((currentPage + 1) * itemsPerPage, totalCount)} of {totalCount} cards
                 </span>
                 <div className="flex items-center gap-2">
                   <button

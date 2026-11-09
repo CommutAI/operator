@@ -229,7 +229,7 @@ export default function Dashboard() {
       // Fetch fare irregularities with trip info
       const { data: irregularities } = await supabase
         .from('fare_irregularities')
-        .select('*, trips(*)')
+        .select('*, trips(buses(*))')
         .eq('resolved', false)
         .order('detected_at', { ascending: false });
 
@@ -349,7 +349,7 @@ export default function Dashboard() {
 
         return {
           id: trip.id,
-          plate: trip.buses?.plate_number || 'Unknown',
+          plate: trip.buses?.bus_number || trip.buses?.plate_number || 'Unknown',
           route: trip.buses?.route || 'Unknown',
           lat: gps?.lat ?? trip.current_lat ?? 8.429,
           lng: gps?.lng ?? trip.current_lng ?? 124.762,
@@ -972,7 +972,7 @@ export default function Dashboard() {
                           </span>
                           {irregularity.trips && (
                             <span className="text-white/60 text-xs">
-                              Bus {irregularity.trips.buses?.plate_number || 'Unknown'}
+                              Bus {irregularity.trips.buses?.bus_number || irregularity.trips.buses?.plate_number || 'Unknown'}
                             </span>
                           )}
                         </div>

@@ -168,7 +168,7 @@ const LiveMap = () => {
 
         return {
           id: trip.id,
-          plate: trip.buses?.plate_number || 'Unknown',
+          plate: trip.buses?.bus_number || trip.buses?.plate_number || 'Unknown',
           route: trip.buses?.route || 'Unknown',
           lat: gps?.lat ?? trip.current_lat ?? 8.429,
           lng: gps?.lng ?? trip.current_lng ?? 124.762,
