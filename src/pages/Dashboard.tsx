@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   Bus, Users, DollarSign, Activity, AlertTriangle,
-  Map as MapIcon, TrendingUp, Zap, Navigation, ArrowUp, ArrowDown, Video, RefreshCw, CheckCircle
+  Map as MapIcon, TrendingUp, Zap, Navigation, ArrowUp, ArrowDown, Video, RefreshCw, CheckCircle, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useBackendVideo } from '../hooks/useBackendVideo';
 import {
@@ -137,6 +137,7 @@ export default function Dashboard() {
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [activeTrips, setActiveTrips] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
+  const [irregularities, setIrregularities] = useState<any[]>([]);
   const [mapBuses, setMapBuses] = useState<any[]>([]);
   const [mapRoutes, setMapRoutes] = useState<any[]>([]);
   const [routeCoordinates, setRouteCoordinates] = useState<Record<string, [number, number][]>>({});
@@ -147,6 +148,8 @@ export default function Dashboard() {
   });
   const [tripsSortColumn, setTripsSortColumn] = useState<'started_at' | 'bus_number' | 'route'>('started_at');
   const [tripsSortDirection, setTripsSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [irregularitiesPage, setIrregularitiesPage] = useState(0);
+  const irregularitiesPerPage = 5;
 
   // Backend video streaming
   const {
@@ -223,11 +226,12 @@ export default function Dashboard() {
 
       const fareCollectedToday = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
 
-      // Fetch fare irregularities
+      // Fetch fare irregularities with trip info
       const { data: irregularities } = await supabase
         .from('fare_irregularities')
-        .select('*')
-        .eq('resolved', false);
+        .select('*, trips(*)')
+        .eq('resolved', false)
+        .order('detected_at', { ascending: false });
 
       // Fetch emergency alerts
       const { data: emergencyAlerts } = await supabase
@@ -292,6 +296,7 @@ export default function Dashboard() {
       });
 
       setAlerts(emergencyAlerts || []);
+      setIrregularities(irregularities || []);
       
       // Fetch live map data
       await fetchLiveMapData();
@@ -496,6 +501,27 @@ export default function Dashboard() {
       // Use toast notification instead of alert
       const { toast } = await import('react-hot-toast');
       toast.error('Error resolving alert');
+    }
+  };
+
+  const handleResolveIrregularity = async (irregularityId: string) => {
+    try {
+      const { error } = await supabase
+        .from('fare_irregularities')
+        .update({
+          resolved: true,
+          resolved_at: new Date().toISOString()
+        })
+        .eq('id', irregularityId);
+
+      if (error) throw error;
+
+      // Refresh dashboard data
+      await fetchDashboardData();
+    } catch (error) {
+      console.error('Error resolving irregularity:', error);
+      const { toast } = await import('react-hot-toast');
+      toast.error('Error resolving irregularity');
     }
   };
 
@@ -916,36 +942,87 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Alerts Section */}
-      {alerts.length > 0 && (
-        <div className="glass-card p-6 border-l-4 border-red-500">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Zap className="text-red-400" size={20} />
-            Active Alerts
+      {/* Active Irregularities Section */}
+      <div className="glass-card p-6 border-l-4 border-orange-500">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <AlertTriangle className="text-orange-400" size={20} />
+            Active Irregularities
           </h2>
-          <div className="space-y-3">
-            {alerts.map((alert: any) => (
-              <div key={alert.id} className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-white font-medium">{alert.notes || 'Emergency Alert'}</p>
-                    <p className="text-white/60 text-xs mt-1">
-                      {new Date(alert.created_at).toLocaleString()}
-                    </p>
+          <span className="text-white/60 text-sm">{irregularities.length} unresolved</span>
+        </div>
+
+        {irregularities.length === 0 ? (
+          <div className="text-center py-8">
+            <CheckCircle className="text-green-400 mx-auto mb-2" size={48} />
+            <p className="text-white/60">No active irregularities</p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {irregularities
+                .slice(irregularitiesPage * irregularitiesPerPage, (irregularitiesPage + 1) * irregularitiesPerPage)
+                .map((irregularity: any) => (
+                  <div key={irregularity.id} className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 rounded text-xs font-medium capitalize">
+                            {irregularity.type}
+                          </span>
+                          {irregularity.trips && (
+                            <span className="text-white/60 text-xs">
+                              Bus {irregularity.trips.buses?.plate_number || 'Unknown'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-white font-medium">{irregularity.description}</p>
+                        <p className="text-white/60 text-xs mt-1">
+                          {new Date(irregularity.detected_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleResolveIrregularity(irregularity.id)}
+                        className="ml-4 px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                      >
+                        <CheckCircle size={14} />
+                        Resolve
+                      </button>
+                    </div>
                   </div>
+                ))}
+            </div>
+
+            {/* Pagination */}
+            {irregularities.length > irregularitiesPerPage && (
+              <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
+                <span className="text-white/60 text-sm">
+                  Showing {irregularitiesPage * irregularitiesPerPage + 1} to {Math.min((irregularitiesPage + 1) * irregularitiesPerPage, irregularities.length)} of {irregularities.length}
+                </span>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleResolveAlert(alert.id)}
-                    className="ml-4 px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                    onClick={() => setIrregularitiesPage(Math.max(0, irregularitiesPage - 1))}
+                    disabled={irregularitiesPage === 0}
+                    className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    <CheckCircle size={14} />
-                    Resolve
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-white/60 text-sm">
+                    Page {irregularitiesPage + 1} of {Math.ceil(irregularities.length / irregularitiesPerPage)}
+                  </span>
+                  <button
+                    onClick={() => setIrregularitiesPage(Math.min(Math.ceil(irregularities.length / irregularitiesPerPage) - 1, irregularitiesPage + 1))}
+                    disabled={irregularitiesPage === Math.ceil(irregularities.length / irregularitiesPerPage) - 1}
+                    className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={16} />
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            )}
+          </>
+        )}
+      </div>
 
     </div>
   );
