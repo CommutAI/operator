@@ -16,14 +16,15 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
   const [passengerCount, setPassengerCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [connectionMessage, setConnectionMessage] = useState<string>('');
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLImageElement>(null);
   const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const deadRef = useRef(false);
 
-  const backendUrl = 'http://localhost:8000';
-  const wsUrl = backendUrl.replace('http', 'ws') + '/ws/video-feed';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const wsUrl = backendUrl.replace('http', 'ws').replace('https', 'wss') + '/ws/video-feed';
 
   function clearTimers() {
     if (heartbeatTimer.current !== null) {
@@ -60,6 +61,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
         }
 
         setConnectionStatus('connected');
+        setConnectionMessage('Connected to backend. Waiting for video stream from Raspberry Pi...');
         setIsStreaming(true);
         setError(null);
 
@@ -98,6 +100,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
 
         if (!deadRef.current) {
           setConnectionStatus('disconnected');
+          setConnectionMessage('Disconnected from backend');
           setIsStreaming(false);
           setError('Connection closed');
         }
@@ -149,6 +152,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
     passengerCount,
     error,
     connectionStatus,
+    connectionMessage,
     videoRef,
     connect,
     disconnect,

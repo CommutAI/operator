@@ -21,6 +21,7 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
     isStreaming: backendStreaming,
     passengerCount: backendCount,
     connectionStatus: backendStatus,
+    connectionMessage: backendMessage,
     videoRef: backendVideoRef,
     refresh: backendRefresh,
   } = useBackendVideo({ autoConnect: autoConnect });
@@ -122,7 +123,7 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
                   <>
                     <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
                     <p className="text-red-400 font-medium mb-1">Backend connection error</p>
-                    <p className="text-white/40 text-sm mb-4">Make sure the backend server is running at localhost:8000</p>
+                    <p className="text-white/40 text-sm mb-4">Make sure the backend server is running at {import.meta.env.VITE_BACKEND_URL || 'localhost:8000'}</p>
                     <button
                       onClick={refresh}
                       className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm flex items-center gap-2 mx-auto transition-colors"
@@ -130,6 +131,13 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
                       <RefreshCw size={14} />
                       Retry
                     </button>
+                  </>
+                ) : connectionStatus === 'connected' ? (
+                  <>
+                    <Video className="w-12 h-12 text-orange-400 mx-auto mb-4" />
+                    <p className="text-white/60 text-lg">Connected to backend</p>
+                    <p className="text-white/30 text-sm mt-1">{backendMessage || 'Waiting for video stream from Raspberry Pi...'}</p>
+                    <p className="text-white/30 text-xs mt-2">No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.</p>
                   </>
                 ) : (
                   <>

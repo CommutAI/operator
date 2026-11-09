@@ -45,9 +45,10 @@ export default function AIMonitoring() {
     isStreaming: videoStreaming,
     passengerCount: videoPassengerCount,
     connectionStatus: videoConnectionStatus,
+    connectionMessage: videoConnectionMessage,
     videoRef,
     refresh: videoRefresh,
-  } = useBackendVideo({ autoConnect: false });
+  } = useBackendVideo({ autoConnect: true });
 
   const totalPages = Math.ceil(
     detectionHistory.filter(item => {
@@ -299,8 +300,13 @@ export default function AIMonitoring() {
               <div className="text-center">
                 <Video className="text-white/30 mx-auto mb-2" size={32} />
                 <p className="text-white/40 text-sm">
-                  {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : 'Video feed unavailable'}
+                  {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : videoConnectionMessage || 'Video feed unavailable'}
                 </p>
+                {videoConnectionStatus === 'connected' && (
+                  <p className="text-white/30 text-xs mt-2">
+                    No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.
+                  </p>
+                )}
                 <button
                   onClick={videoRefresh}
                   className="mt-3 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs transition-colors"

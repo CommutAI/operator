@@ -151,9 +151,10 @@ export default function Dashboard() {
     isStreaming: videoStreaming,
     passengerCount: videoPassengerCount,
     connectionStatus: videoConnectionStatus,
+    connectionMessage: videoConnectionMessage,
     videoRef,
     refresh: videoRefresh,
-  } = useBackendVideo({ autoConnect: false });
+  } = useBackendVideo({ autoConnect: true });
 
   useEffect(() => {
     fetchDashboardData();
@@ -611,8 +612,13 @@ export default function Dashboard() {
               <div className="text-center">
                 <Video className="text-white/30 mx-auto mb-2" size={32} />
                 <p className="text-white/40 text-sm">
-                  {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : 'Video feed unavailable'}
+                  {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : videoConnectionMessage || 'Video feed unavailable'}
                 </p>
+                {videoConnectionStatus === 'connected' && (
+                  <p className="text-white/30 text-xs mt-2">
+                    No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.
+                  </p>
+                )}
               </div>
             </div>
           )}
