@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, StopCircle, Bus, MapPin, CheckCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Bus, MapPin, CheckCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Trip {
@@ -54,23 +54,6 @@ export default function TripManagement() {
       console.error('Error fetching trips:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleEndTrip = async (tripId: string) => {
-    if (!confirm('Are you sure you want to end this trip?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('trips')
-        .update({ status: 'completed', ended_at: new Date().toISOString() })
-        .eq('id', tripId);
-
-      if (error) throw error;
-      fetchTrips();
-    } catch (error) {
-      console.error('Error ending trip:', error);
-      alert('Error ending trip: ' + (error as Error).message);
     }
   };
 
@@ -207,7 +190,6 @@ export default function TripManagement() {
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Started</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Duration</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">GPS</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -244,17 +226,6 @@ export default function TripManagement() {
                           </div>
                         ) : (
                           <span className="text-white/40 text-sm">-</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-4">
-                        {trip.status === 'in_progress' && (
-                          <button
-                            onClick={() => handleEndTrip(trip.id)}
-                            className="p-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors"
-                            title="End Trip"
-                          >
-                            <StopCircle size={16} />
-                          </button>
                         )}
                       </td>
                     </tr>
