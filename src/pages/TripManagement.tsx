@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Bus, MapPin, CheckCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Bus, MapPin, CheckCircle, Clock, ChevronLeft, ChevronRight, Video, Play, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Trip {
@@ -19,12 +19,31 @@ interface Trip {
   } | null;
 }
 
+interface TripVideo {
+  id: string;
+  trip_id: string;
+  storage_type: string;
+  file_path: string | null;
+  file_size: number | null;
+  duration_seconds: number | null;
+  start_time: string;
+  end_time: string | null;
+  frame_count: number | null;
+  storage_url: string | null;
+  status: string;
+  upload_progress: number;
+  error_message: string | null;
+  created_at: string;
+}
+
 export default function TripManagement() {
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [tripVideos, setTripVideos] = useState<Record<string, TripVideo>>({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [currentPage, setCurrentPage] = useState(0);
+  const [selectedVideo, setSelectedVideo] = useState<TripVideo | null>(null);
   const itemsPerPage = 10;
 
   useEffect(() => {
@@ -50,6 +69,26 @@ export default function TripManagement() {
 
       if (error) throw error;
       setTrips(data || []);
+
+      // Fetch videos for all trips
+      if (data && data.length > 0) {
+        const tripIds = data.map(t => t.id);
+        const { data: videos } = await supabase
+          .from('trip_videos')
+          .select('*')
+          .in('trip_id', tripIds);
+
+        if (videos) {
+          const videoMap: Record<string, TripVideo> = {};
+          videos.forEach(video => {
+            // Keep only the latest video for each trip
+            if (!videoMap[video.trip_id] || new Date(video.created_at) > new Date(videoMap[video.trip_id].created_at)) {
+              videoMap[video.trip_id] = video;
+            }
+          });
+          setTripVideos(videoMap);
+        }
+      }
     } catch (error) {
       console.error('Error fetching trips:', error);
     } finally {
@@ -190,6 +229,7 @@ export default function TripManagement() {
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Started</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Duration</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">GPS</th>
+                    <th className="text-left py-3 px-4 text-white/60 font-medium">Video</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -228,6 +268,19 @@ export default function TripManagement() {
                           <span className="text-white/40 text-sm">-</span>
                         )}
                       </td>
+                      <td className="py-4 px-4">
+                        {tripVideos[trip.id] ? (
+                          <button
+                            onClick={() => setSelectedVideo(tripVideos[trip.id])}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors text-sm"
+                          >
+                            <Video size={14} />
+                            <span>View</span>
+                          </button>
+                        ) : (
+                          <span className="text-white/40 text-sm">No video</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -264,6 +317,121 @@ export default function TripManagement() {
           </>
         )}
       </div>
+
+      {/* Video Player Modal */}
+      {selectedVideo && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="glass-card w-full max-w-4xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white">Trip Video</h3>
+              <button
+                onClick={() => setSelectedVideo(null)}
+                className="text-white/60 hover:text-white transition-colors"
+              >
+                <CheckCircle size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Video Info */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-white/60">Status</p>
+                  <p className={`font-medium ${
+                    selectedVideo.status === 'completed' ? 'text-green-400' :
+                    selectedVideo.status === 'uploading' ? 'text-yellow-400' :
+                    selectedVideo.status === 'recording' ? 'text-blue-400' :
+                    'text-red-400'
+                  }`}>
+                    {selectedVideo.status.charAt(0).toUpperCase() + selectedVideo.status.slice(1)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-white/60">Duration</p>
+                  <p className="text-white font-medium">
+                    {selectedVideo.duration_seconds
+                      ? `${Math.floor(selectedVideo.duration_seconds / 60)}m ${selectedVideo.duration_seconds % 60}s`
+                      : '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-white/60">Size</p>
+                  <p className="text-white font-medium">
+                    {selectedVideo.file_size
+                      ? `${(selectedVideo.file_size / (1024 * 1024)).toFixed(2)} MB`
+                      : '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-white/60">Frames</p>
+                  <p className="text-white font-medium">
+                    {selectedVideo.frame_count?.toLocaleString() || '-'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Upload Progress */}
+              {selectedVideo.status === 'uploading' && (
+                <div className="bg-white/10 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-white/60 text-sm">Uploading to cloud...</span>
+                    <span className="text-white font-medium">{selectedVideo.upload_progress}%</span>
+                  </div>
+                  <div className="w-full bg-white/10 rounded-full h-2">
+                    <div
+                      className="bg-orange-500 h-2 rounded-full transition-all"
+                      style={{ width: `${selectedVideo.upload_progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Video Player */}
+              {selectedVideo.status === 'completed' && selectedVideo.storage_url ? (
+                <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+                  <video
+                    src={selectedVideo.storage_url}
+                    controls
+                    className="w-full h-full"
+                  />
+                </div>
+              ) : selectedVideo.status === 'recording' ? (
+                <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-8 text-center">
+                  <Video size={48} className="text-blue-400 mx-auto mb-4 animate-pulse" />
+                  <p className="text-white text-lg font-medium">Recording in progress</p>
+                  <p className="text-white/60 text-sm mt-2">Video will be available after trip ends</p>
+                </div>
+              ) : selectedVideo.status === 'uploading' ? (
+                <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-8 text-center">
+                  <Video size={48} className="text-yellow-400 mx-auto mb-4" />
+                  <p className="text-white text-lg font-medium">Uploading to cloud</p>
+                  <p className="text-white/60 text-sm mt-2">Please wait while video uploads</p>
+                </div>
+              ) : (
+                <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-8 text-center">
+                  <Video size={48} className="text-red-400 mx-auto mb-4" />
+                  <p className="text-white text-lg font-medium">Video unavailable</p>
+                  <p className="text-white/60 text-sm mt-2">{selectedVideo.error_message || 'Failed to process video'}</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              {selectedVideo.status === 'completed' && selectedVideo.storage_url && (
+                <div className="flex gap-3">
+                  <a
+                    href={selectedVideo.storage_url}
+                    download
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
+                  >
+                    <Download size={18} />
+                    Download Video
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
