@@ -10,6 +10,7 @@ interface Transaction {
   fare?: number;
   baggage?: number;
   created_at: string;
+  trip_id?: string;
   staff?: {
     full_name: string;
   };
@@ -19,6 +20,7 @@ interface Trip {
   id: string;
   status: string;
   started_at: string;
+  ended_at?: string;
   buses?: {
     plate_number: string;
     route: string;
@@ -26,6 +28,9 @@ interface Trip {
   conductor_staff?: {
     full_name: string;
   };
+  passenger_counts?: Array<{
+    count: number;
+  }>;
 }
 
 export default function Reports() {
@@ -152,9 +157,9 @@ export default function Reports() {
     try {
       const { data } = await supabase
         .from('trips')
-        .select('*, buses(*), conductor_staff:staff_users(*)')
+        .select('*, buses(*), conductor_staff:staff_users(*), passenger_counts(count)')
         .order('started_at', { ascending: false })
-        .limit(5);
+        .limit(10);
 
       setRecentActivity(data || []);
     } catch (error) {
@@ -426,28 +431,42 @@ export default function Reports() {
                   <th className="text-left py-3 px-4 text-white/60 font-medium">Conductor</th>
                   <th className="text-left py-3 px-4 text-white/60 font-medium">Status</th>
                   <th className="text-left py-3 px-4 text-white/60 font-medium">Started</th>
+                  <th className="text-left py-3 px-4 text-white/60 font-medium">Duration</th>
+                  <th className="text-left py-3 px-4 text-white/60 font-medium">Passengers</th>
                 </tr>
               </thead>
               <tbody>
-                {recentActivity.map((trip) => (
-                  <tr key={trip.id} className="border-b border-white/5 hover:bg-white/5">
-                    <td className="py-4 px-4 text-white font-medium">{trip.buses?.plate_number || 'N/A'}</td>
-                    <td className="py-4 px-4 text-white/80">{trip.buses?.route || 'Unknown'}</td>
-                    <td className="py-4 px-4 text-white/80">{trip.conductor_staff?.full_name || 'Unknown'}</td>
-                    <td className="py-4 px-4">
-                      <span className={`px-3 py-1 rounded-full text-xs ${
-                        trip.status === 'in_progress' ? 'bg-blue-500/20 text-blue-400' :
-                        trip.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-                        'bg-red-500/20 text-red-400'
-                      }`}>
-                        {trip.status}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-white/60 text-sm">
-                      {new Date(trip.started_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
+                {recentActivity.map((trip) => {
+                  const duration = trip.ended_at && trip.started_at
+                    ? Math.round((new Date(trip.ended_at).getTime() - new Date(trip.started_at).getTime()) / 60000)
+                    : null;
+                  return (
+                    <tr key={trip.id} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="py-4 px-4 text-white font-medium">{trip.buses?.plate_number || 'N/A'}</td>
+                      <td className="py-4 px-4 text-white/80">{trip.buses?.route || 'Unknown'}</td>
+                      <td className="py-4 px-4 text-white/80">{trip.conductor_staff?.full_name || 'Unknown'}</td>
+                      <td className="py-4 px-4">
+                        <span className={`px-3 py-1 rounded-full text-xs ${
+                          trip.status === 'in_progress' ? 'bg-blue-500/20 text-blue-400' :
+                          trip.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                          trip.status === 'cancelled' ? 'bg-red-500/20 text-red-400' :
+                          'bg-yellow-500/20 text-yellow-400'
+                        }`}>
+                          {trip.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-white/60 text-sm">
+                        {new Date(trip.started_at).toLocaleString()}
+                      </td>
+                      <td className="py-4 px-4 text-white/60 text-sm">
+                        {duration ? `${duration} min` : '-'}
+                      </td>
+                      <td className="py-4 px-4 text-white/60 text-sm">
+                        {trip.passenger_counts?.[0]?.count || '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -569,6 +588,7 @@ export default function Reports() {
                     </div>
                   </th>
                   <th className="text-left py-3 px-4 text-white/60 font-medium">Staff</th>
+                  <th className="text-left py-3 px-4 text-white/60 font-medium">Trip</th>
                   <th className="text-left py-3 px-4 text-white/60 font-medium cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('created_at')}>
                     <div className="flex items-center gap-2">
                       Time
@@ -588,6 +608,9 @@ export default function Reports() {
                     <td className="py-4 px-4 text-white font-medium">₱{Number(tx.amount).toFixed(2)}</td>
                     <td className="py-4 px-4 text-white/80">{tx.channel}</td>
                     <td className="py-4 px-4 text-white/80">{tx.staff?.full_name || 'N/A'}</td>
+                    <td className="py-4 px-4 text-white/60 text-sm">
+                      {tx.trip_id ? `#${tx.trip_id.slice(0, 8)}...` : 'N/A'}
+                    </td>
                     <td className="py-4 px-4 text-white/60 text-sm">
                       {new Date(tx.created_at).toLocaleString()}
                     </td>

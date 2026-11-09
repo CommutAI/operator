@@ -11,6 +11,9 @@ interface Transaction {
   route: string;
   conductor_name: string;
   card_number?: string;
+  card_id?: string;
+  trip_id?: string;
+  staff_id?: string;
   created_at: string;
 }
 
@@ -121,19 +124,7 @@ export default function Transactions() {
 
       let query = supabase
         .from('transactions')
-        .select(`
-          id,
-          amount,
-          type,
-          created_at,
-          qr_cards (card_uid),
-          trips (
-            id,
-            conductor_id,
-            buses (bus_number, route)
-          ),
-          staff_id
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (applyDateFilter) {
@@ -147,32 +138,76 @@ export default function Transactions() {
 
       const { data, error } = await query;
 
-      if (error) throw error;
-
-      // Fetch all conductors separately
-      const conductorIds = [...new Set((data || []).map((tx: any) => tx.trips?.conductor_id).filter(Boolean))];
-      const staffIds = [...new Set((data || []).map((tx: any) => tx.staff_id).filter(Boolean))];
-      const allUserIds = [...new Set([...conductorIds, ...staffIds])];
-
-      const { data: users } = await supabase
-        .from('staff_users')
-        .select('id, full_name')
-        .in('id', allUserIds);
-
-      const userMap = new Map(
-        (users || []).map((u: any) => [u.id, u.full_name])
-      );
+      if (error) {
+        console.error('Error fetching transactions:', error);
+        throw error;
+      }
 
       const transactionsData: Transaction[] = (data || []).map((tx: any) => ({
         id: tx.id,
         amount: tx.amount,
         type: tx.type,
-        bus_number: tx.trips?.buses?.bus_number || 0,
-        route: tx.trips?.buses?.route || 'Unknown',
-        conductor_name: userMap.get(tx.trips?.conductor_id) || userMap.get(tx.staff_id) || 'Unknown',
-        card_number: tx.qr_cards?.card_uid || 'N/A',
+        bus_number: 0, // Will be updated if trip info available
+        route: 'Unknown',
+        conductor_name: 'System',
+        card_number: 'N/A',
         created_at: tx.created_at,
       }));
+
+      // If transactions exist, try to get related data
+      if (transactionsData.length > 0) {
+        try {
+          // Fetch cards
+          const cardIds = [...new Set(transactionsData.map(t => t.card_id).filter(Boolean))];
+          if (cardIds.length > 0) {
+            const { data: cards } = await supabase
+              .from('qr_cards')
+              .select('id, card_uid')
+              .in('id', cardIds);
+            const cardMap = new Map((cards || []).map((c: any) => [c.id, c.card_uid]));
+            transactionsData.forEach(t => {
+              if (t.card_id && cardMap.has(t.card_id)) {
+                t.card_number = cardMap.get(t.card_id);
+              }
+            });
+          }
+
+          // Fetch trips and buses
+          const tripIds = [...new Set(transactionsData.map(t => t.trip_id).filter(Boolean))];
+          if (tripIds.length > 0) {
+            const { data: trips } = await supabase
+              .from('trips')
+              .select('id, conductor_id, buses(bus_number, route)')
+              .in('id', tripIds);
+            const tripMap = new Map((trips || []).map((t: any) => [t.id, t]));
+            transactionsData.forEach(t => {
+              if (t.trip_id && tripMap.has(t.trip_id)) {
+                const trip = tripMap.get(t.trip_id);
+                t.bus_number = trip.buses?.bus_number || 0;
+                t.route = trip.buses?.route || 'Unknown';
+              }
+            });
+          }
+
+          // Fetch staff
+          const staffIds = [...new Set(transactionsData.map(t => t.staff_id).filter(Boolean))];
+          if (staffIds.length > 0) {
+            const { data: staff } = await supabase
+              .from('staff_users')
+              .select('id, full_name')
+              .in('id', staffIds);
+            const staffMap = new Map((staff || []).map((s: any) => [s.id, s.full_name]));
+            transactionsData.forEach(t => {
+              if (t.staff_id && staffMap.has(t.staff_id)) {
+                t.conductor_name = staffMap.get(t.staff_id);
+              }
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching related data:', err);
+          // Continue with basic transaction data
+        }
+      }
 
       setTransactions(transactionsData);
       setLoading(false);
