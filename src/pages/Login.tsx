@@ -45,56 +45,90 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Get user by email (including password for verification)
-      const { data: user, error: fetchError } = await supabase
-        .from('staff_users')
-        .select('id, full_name, email, role, is_active, created_at, password')
-        .eq('email', email)
-        .eq('is_active', true)
-        .single();
+      // Try Supabase Auth first
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (fetchError || !user) {
-        throw new Error('Invalid email or password');
-      }
+      if (authError) {
+        // If Supabase Auth fails, try custom password in staff_users table
+        const { data: user, error: fetchError } = await supabase
+          .from('staff_users')
+          .select('id, full_name, email, role, is_active, created_at, password')
+          .eq('email', email)
+          .eq('is_active', true)
+          .single();
 
-      // Check if password is hashed (bcrypt hashes start with $2a$ or $2b$)
-      const isHashed = user.password.startsWith('$2a$') || user.password.startsWith('$2b$');
-
-      let passwordMatch = false;
-
-      if (isHashed) {
-        // Compare with bcrypt
-        passwordMatch = await bcrypt.compare(password, user.password);
-      } else {
-        // Plain text comparison (legacy - will upgrade on successful login)
-        passwordMatch = password === user.password;
-
-        // Upgrade to bcrypt on successful login
-        if (passwordMatch) {
-          const saltRounds = 10;
-          const hashedPassword = await bcrypt.hash(password, saltRounds);
-          await supabase
-            .from('staff_users')
-            .update({ password: hashedPassword })
-            .eq('id', user.id);
+        if (fetchError || !user) {
+          throw new Error('Invalid email or password');
         }
+
+        // Check if password exists and verify it
+        if (!user.password) {
+          throw new Error('No password set for this account');
+        }
+
+        // Check if password is hashed (bcrypt hashes start with $2a$ or $2b$)
+        const isHashed = user.password.startsWith('$2a$') || user.password.startsWith('$2b$');
+
+        let passwordMatch = false;
+
+        if (isHashed) {
+          // Compare with bcrypt
+          passwordMatch = await bcrypt.compare(password, user.password);
+        } else {
+          // Plain text comparison (legacy - will upgrade on successful login)
+          passwordMatch = password === user.password;
+
+          // Upgrade to bcrypt on successful login
+          if (passwordMatch) {
+            const saltRounds = 10;
+            const hashedPassword = await bcrypt.hash(password, saltRounds);
+            await supabase
+              .from('staff_users')
+              .update({ password: hashedPassword })
+              .eq('id', user.id);
+          }
+        }
+
+        if (!passwordMatch) {
+          throw new Error('Invalid email or password');
+        }
+
+        // Update last_login_at
+        await supabase
+          .from('staff_users')
+          .update({ last_login_at: new Date().toISOString() })
+          .eq('id', user.id);
+
+        // Remove password from user object before storing
+        const { password: _, ...userWithoutPassword } = user as any;
+
+        // Sign in using AuthContext to update state immediately
+        signIn(userWithoutPassword as StaffUser);
+      } else {
+        // Supabase Auth succeeded - get staff user data
+        const { data: staffUser, error: staffError } = await supabase
+          .from('staff_users')
+          .select('id, full_name, email, role, is_active, created_at')
+          .eq('id', authData.user.id)
+          .eq('is_active', true)
+          .single();
+
+        if (staffError || !staffUser) {
+          throw new Error('User account not found or inactive');
+        }
+
+        // Update last_login_at
+        await supabase
+          .from('staff_users')
+          .update({ last_login_at: new Date().toISOString() })
+          .eq('id', staffUser.id);
+
+        // Sign in using AuthContext
+        signIn(staffUser);
       }
-
-      if (!passwordMatch) {
-        throw new Error('Invalid email or password');
-      }
-
-      // Update last_login_at
-      await supabase
-        .from('staff_users')
-        .update({ last_login_at: new Date().toISOString() })
-        .eq('id', user.id);
-
-      // Remove password from user object before storing
-      const { password: _, ...userWithoutPassword } = user as any;
-
-      // Sign in using AuthContext to update state immediately
-      signIn(userWithoutPassword as StaffUser);
 
       // Navigate to home/dashboard on successful login
       navigate('/');
