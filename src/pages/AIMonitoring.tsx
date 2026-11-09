@@ -289,7 +289,7 @@ export default function AIMonitoring() {
             <span className="text-white/60 text-xs">{videoConnectionStatus}</span>
           </div>
         </div>
-        <div className="relative bg-black rounded-lg h-64 overflow-hidden">
+        <div className="relative bg-black rounded-lg h-96 overflow-hidden">
           <img
             ref={videoRef}
             alt="Live video feed"
