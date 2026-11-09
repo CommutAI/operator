@@ -15,6 +15,9 @@ export default function Login() {
   const navigate = useNavigate();
   const { signIn } = useAuth();
 
+  const hasEmail = email.length > 0;
+  const hasPassword = password.length > 0;
+
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -128,7 +131,7 @@ export default function Login() {
               Email
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40 w-5 h-5" />
+              <Mail className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors ${hasEmail ? 'text-orange-500' : 'text-white/40'}`} />
               <input
                 type="email"
                 value={email}
@@ -145,7 +148,7 @@ export default function Login() {
               Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40 w-5 h-5" />
+              <Lock className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors ${hasPassword ? 'text-orange-500' : 'text-white/40'}`} />
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
