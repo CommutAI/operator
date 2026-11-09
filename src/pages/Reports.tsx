@@ -207,6 +207,9 @@ export default function Reports() {
     fare_validation: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
     balance_topup: 'bg-green-500/20 text-green-400 border-green-500/50',
     card_issuance: 'bg-purple-500/20 text-purple-400 border-purple-500/50',
+    fare: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+    baggage: 'bg-orange-500/20 text-orange-400 border-orange-500/50',
+    penalty: 'bg-red-500/20 text-red-400 border-red-500/50',
   };
 
   const tabs = [
