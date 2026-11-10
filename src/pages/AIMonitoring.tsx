@@ -36,7 +36,7 @@ export default function AIMonitoring() {
   const [currentPage, setCurrentPage] = useState(0);
   const [irregularitiesPage, setIrregularitiesPage] = useState(0);
   const itemsPerPage = 5;
-  const irregularitiesPerPage = 3;
+  const irregularitiesPerPage = 5;
 
   // Backend video streaming
   const {

@@ -149,7 +149,7 @@ export default function Dashboard() {
   const [tripsSortColumn, setTripsSortColumn] = useState<'started_at' | 'bus_number' | 'route'>('started_at');
   const [tripsSortDirection, setTripsSortDirection] = useState<'asc' | 'desc'>('desc');
   const [irregularitiesPage, setIrregularitiesPage] = useState(0);
-  const irregularitiesPerPage = 3;
+  const irregularitiesPerPage = 5;
 
   // Backend video streaming
   const {
