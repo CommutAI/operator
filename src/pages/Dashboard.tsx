@@ -1007,29 +1007,29 @@ export default function Dashboard() {
               {irregularities
                 .slice(irregularitiesPage * irregularitiesPerPage, (irregularitiesPage + 1) * irregularitiesPerPage)
                 .map((irregularity: any) => (
-                  <div key={irregularity.id} className="bg-orange-500/10 rounded-lg p-3 lg:p-4 border border-orange-500/30">
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div key={irregularity.id} className="bg-orange-500/10 rounded-lg p-2 lg:p-3 border border-orange-500/30">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 rounded text-xs font-medium capitalize">
+                        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                          <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 rounded text-[10px] font-medium capitalize">
                             {irregularity.type}
                           </span>
                           {irregularity.trips && (
-                            <span className="text-white/60 text-xs">
+                            <span className="text-white/60 text-[10px]">
                               Bus {irregularity.trips.buses?.bus_number || irregularity.trips.buses?.plate_number || 'Unknown'}
                             </span>
                           )}
                         </div>
-                        <p className="text-white font-medium text-sm">{irregularity.description}</p>
-                        <p className="text-white/60 text-xs mt-1">
+                        <p className="text-white font-medium text-xs">{irregularity.description}</p>
+                        <p className="text-white/60 text-[10px] mt-0.5">
                           {new Date(irregularity.detected_at).toLocaleString()}
                         </p>
                       </div>
                       <button
                         onClick={() => handleResolveIrregularity(irregularity.id)}
-                        className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 self-start sm:self-auto"
+                        className="px-2 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 self-start sm:self-auto"
                       >
-                        <CheckCircle size={14} />
+                        <CheckCircle size={12} />
                         Resolve
                       </button>
                     </div>

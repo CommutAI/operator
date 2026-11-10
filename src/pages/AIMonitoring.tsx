@@ -591,22 +591,22 @@ export default function AIMonitoring() {
               .filter(irr => !irr.resolved)
               .slice(irregularitiesPage * irregularitiesPerPage, (irregularitiesPage + 1) * irregularitiesPerPage)
               .map((irr) => (
-              <div key={irr.id} className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
+              <div key={irr.id} className="bg-red-500/10 rounded-lg p-2 lg:p-3 border border-red-500/30">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-white font-medium">{irr.description || 'Fare irregularity detected'}</span>
-                      <span className="text-white/60 text-xs">Trip ID: {irr.trip_id?.slice(0, 8) || 'Unknown'}...</span>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="text-white font-medium text-xs">{irr.description || 'Fare irregularity detected'}</span>
+                      <span className="text-white/60 text-[10px]">Trip ID: {irr.trip_id?.slice(0, 8) || 'Unknown'}...</span>
                     </div>
-                    <p className="text-white/60 text-xs">
+                    <p className="text-white/60 text-[10px]">
                       Detected: {new Date(irr.detected_at).toLocaleString()}
                     </p>
                   </div>
                   <button
                     onClick={() => resolveIrregularity(irr.id)}
-                    className="ml-4 px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                    className="ml-2 lg:ml-4 px-2 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
                   >
-                    <CheckCircle size={14} />
+                    <CheckCircle size={12} />
                     Resolve
                   </button>
                 </div>
