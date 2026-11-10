@@ -677,7 +677,7 @@ export default function Dashboard() {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Video Feed */}
-          <div className="lg:col-span-2 relative bg-black rounded-lg h-64 sm:h-80 lg:h-96 overflow-hidden">
+          <div className="lg:col-span-2 relative bg-black rounded-lg h-96 overflow-hidden">
             <img
               ref={videoRef}
               alt="Live video feed"
