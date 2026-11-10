@@ -246,7 +246,8 @@ export default function Dashboard() {
         .from('fare_irregularities')
         .select('*')
         .eq('resolved', false)
-        .order('detected_at', { ascending: false });
+        .order('detected_at', { ascending: false })
+        .limit(50);
 
       // Fetch trips and buses for irregularities
       let irregularitiesWithInfo = irregularities || [];

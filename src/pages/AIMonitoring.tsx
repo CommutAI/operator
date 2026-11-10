@@ -34,7 +34,9 @@ export default function AIMonitoring() {
   const [irregularities, setIrregularities] = useState<Irregularity[]>([]);
   const [passengerCounts, setPassengerCounts] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
+  const [irregularitiesPage, setIrregularitiesPage] = useState(0);
   const itemsPerPage = 5;
+  const irregularitiesPerPage = 3;
 
   // Backend video streaming
   const {
@@ -585,7 +587,10 @@ export default function AIMonitoring() {
             Active Irregularities
           </h2>
           <div className="space-y-3">
-            {irregularities.filter(irr => !irr.resolved).map((irr) => (
+            {irregularities
+              .filter(irr => !irr.resolved)
+              .slice(irregularitiesPage * irregularitiesPerPage, (irregularitiesPage + 1) * irregularitiesPerPage)
+              .map((irr) => (
               <div key={irr.id} className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -608,6 +613,34 @@ export default function AIMonitoring() {
               </div>
             ))}
           </div>
+
+          {/* Pagination */}
+          {irregularities.filter(irr => !irr.resolved).length > 0 && (
+            <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
+              <span className="text-white/60 text-xs">
+                Showing {irregularitiesPage * irregularitiesPerPage + 1} to {Math.min((irregularitiesPage + 1) * irregularitiesPerPage, irregularities.filter(irr => !irr.resolved).length)} of {irregularities.filter(irr => !irr.resolved).length}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIrregularitiesPage(Math.max(0, irregularitiesPage - 1))}
+                  disabled={irregularitiesPage === 0}
+                  className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-white/60 text-xs">
+                  Page {irregularitiesPage + 1} of {Math.ceil(irregularities.filter(irr => !irr.resolved).length / irregularitiesPerPage)}
+                </span>
+                <button
+                  onClick={() => setIrregularitiesPage(Math.min(Math.ceil(irregularities.filter(irr => !irr.resolved).length / irregularitiesPerPage) - 1, irregularitiesPage + 1))}
+                  disabled={irregularitiesPage === Math.ceil(irregularities.filter(irr => !irr.resolved).length / irregularitiesPerPage) - 1}
+                  className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
