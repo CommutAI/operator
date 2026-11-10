@@ -56,7 +56,18 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
+      // Connection timeout - if no connection in 10 seconds, give up
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          closeSocket(ws);
+          setConnectionStatus('error');
+          setConnectionMessage('Connection timeout - Raspberry Pi may be offline');
+          setError('Connection timeout');
+        }
+      }, 10000);
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         if (deadRef.current || wsRef.current !== ws) {
           closeSocket(ws);
           return;
@@ -105,6 +116,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
       };
 
       ws.onclose = () => {
+        clearTimeout(connectionTimeout);
         if (wsRef.current !== ws) return;
         clearTimers();
 
@@ -117,13 +129,17 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
       };
 
       ws.onerror = (err) => {
+        clearTimeout(connectionTimeout);
         if (!deadRef.current) {
           setError('Connection error');
+          setConnectionStatus('error');
+          setConnectionMessage('Failed to connect to Raspberry Pi - check if ngrok tunnel is running');
         }
       };
     } catch (err) {
       setError('Failed to connect');
       setConnectionStatus('error');
+      setConnectionMessage('WebSocket connection failed');
     }
   }, [wsUrl]);
 
