@@ -102,12 +102,12 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
         </div>
       </div>
 
-      {/* Feed + Stats side by side */}
-      <div className="flex gap-3 items-stretch">
+      {/* Feed + Stats stacked */}
+      <div className="flex flex-col gap-3">
 
         {/* Video Feed */}
-        <div className="glass-card rounded-xl overflow-hidden flex-1 min-w-0">
-          <div className="relative bg-black" style={{ width: '100%', height: '640px' }}>
+        <div className="glass-card rounded-xl overflow-hidden w-full">
+          <div className="relative bg-black" style={{ width: '100%', height: '72vh' }}>
           {/* Always-mounted img for WebSocket frames */}
           <img
             ref={videoRef}
@@ -166,8 +166,8 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
         </div>
         {/* End Video Feed */}
 
-        {/* Stats column */}
-        <div className="flex flex-col gap-2 w-44 flex-shrink-0">
+        {/* Stats grid 3-col */}
+        <div className="grid grid-cols-3 gap-2">
           <div className="glass-card rounded-lg px-3 py-2.5 flex items-center gap-2">
             <div className="w-7 h-7 bg-orange-500/20 rounded-md flex items-center justify-center flex-shrink-0">
               <Users className="w-3.5 h-3.5 text-orange-400" />
@@ -224,7 +224,7 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
             </div>
           </div>
         </div>
-        {/* End Stats column */}
+        {/* End Stats grid */}
 
       </div>
       {/* End Feed + Stats */}
