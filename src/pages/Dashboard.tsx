@@ -149,7 +149,7 @@ export default function Dashboard() {
   const [tripsSortColumn, setTripsSortColumn] = useState<'started_at' | 'bus_number' | 'route'>('started_at');
   const [tripsSortDirection, setTripsSortDirection] = useState<'asc' | 'desc'>('desc');
   const [irregularitiesPage, setIrregularitiesPage] = useState(0);
-  const irregularitiesPerPage = 5;
+  const irregularitiesPerPage = 3;
 
   // Backend video streaming
   const {
@@ -1037,7 +1037,7 @@ export default function Dashboard() {
             </div>
 
             {/* Pagination */}
-            {irregularities.length > irregularitiesPerPage && (
+            {irregularities.length > 0 && (
               <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
                 <span className="text-white/60 text-xs">
                   Showing {irregularitiesPage * irregularitiesPerPage + 1} to {Math.min((irregularitiesPage + 1) * irregularitiesPerPage, irregularities.length)} of {irregularities.length}
