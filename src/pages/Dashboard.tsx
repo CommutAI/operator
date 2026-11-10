@@ -1039,7 +1039,7 @@ export default function Dashboard() {
             {/* Pagination */}
             {irregularities.length > irregularitiesPerPage && (
               <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
-                <span className="text-white/60 text-xs lg:text-sm">
+                <span className="text-white/60 text-xs">
                   Showing {irregularitiesPage * irregularitiesPerPage + 1} to {Math.min((irregularitiesPage + 1) * irregularitiesPerPage, irregularities.length)} of {irregularities.length}
                 </span>
                 <div className="flex items-center gap-2">
@@ -1050,7 +1050,7 @@ export default function Dashboard() {
                   >
                     <ChevronLeft size={16} />
                   </button>
-                  <span className="text-white/60 text-sm">
+                  <span className="text-white/60 text-xs">
                     Page {irregularitiesPage + 1} of {Math.ceil(irregularities.length / irregularitiesPerPage)}
                   </span>
                   <button
