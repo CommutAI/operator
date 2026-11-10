@@ -195,15 +195,30 @@ export default function Dashboard() {
       const activeBuses = buses?.filter(b => b.status === 'active').length || 0;
       const totalBuses = buses?.length || 0;
 
-      // Fetch active trips with bus info
+      // Fetch active trips without join first
       const { data: trips } = await supabase
         .from('trips')
-        .select('*, buses(*)')
+        .select('*')
         .eq('status', 'in_progress')
         .order('started_at', { ascending: false })
         .limit(6);
 
-      setActiveTrips(trips || []);
+      // Fetch buses separately and merge
+      let tripsWithBuses = trips || [];
+      if (trips && trips.length > 0) {
+        const busIds = trips.map(t => t.bus_id).filter(Boolean);
+        const { data: buses } = await supabase
+          .from('buses')
+          .select('id, bus_number, plate_number, route')
+          .in('id', busIds);
+        const busesMap = new Map((buses || []).map(b => [b.id, b]));
+        tripsWithBuses = trips.map(trip => ({
+          ...trip,
+          buses: busesMap.get(trip.bus_id)
+        }));
+      }
+
+      setActiveTrips(tripsWithBuses);
 
       // Fetch passenger counts for today
       const today = new Date();
@@ -226,12 +241,41 @@ export default function Dashboard() {
 
       const fareCollectedToday = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
 
-      // Fetch fare irregularities with trip info
+      // Fetch fare irregularities without join first
       const { data: irregularities } = await supabase
         .from('fare_irregularities')
-        .select('*, trips(buses(*))')
+        .select('*')
         .eq('resolved', false)
         .order('detected_at', { ascending: false });
+
+      // Fetch trips and buses for irregularities
+      let irregularitiesWithInfo = irregularities || [];
+      if (irregularities && irregularities.length > 0) {
+        const tripIds = irregularities.map(i => i.trip_id).filter(Boolean);
+        const { data: trips } = await supabase
+          .from('trips')
+          .select('id, bus_id')
+          .in('id', tripIds);
+        const tripsMap = new Map((trips || []).map(t => [t.id, t]));
+
+        const busIds = (trips || []).map(t => t.bus_id).filter(Boolean);
+        const { data: buses } = await supabase
+          .from('buses')
+          .select('id, bus_number, plate_number')
+          .in('id', busIds);
+        const busesMap = new Map((buses || []).map(b => [b.id, b]));
+
+        irregularitiesWithInfo = irregularities.map(irregularity => {
+          const trip = tripsMap.get(irregularity.trip_id);
+          const bus = trip ? busesMap.get(trip.bus_id) : null;
+          return {
+            ...irregularity,
+            trips: trip ? { ...trip, buses: bus } : null
+          };
+        });
+      }
+
+      setIrregularities(irregularitiesWithInfo);
 
       // Fetch emergency alerts
       const { data: emergencyAlerts } = await supabase
@@ -296,8 +340,7 @@ export default function Dashboard() {
       });
 
       setAlerts(emergencyAlerts || []);
-      setIrregularities(irregularities || []);
-      
+
       // Fetch live map data
       await fetchLiveMapData();
     } catch (error) {
