@@ -351,17 +351,32 @@ export default function Dashboard() {
 
   const fetchLiveMapData = async () => {
     try {
-      // Fetch active trips with bus information
+      // Fetch active trips without join first
       const { data: activeTrips } = await supabase
         .from('trips')
-        .select('*, buses(*)')
+        .select('*')
         .eq('status', 'in_progress')
         .order('started_at', { ascending: false });
 
-      // Fetch all buses
+      // Fetch buses separately
       const { data: allBuses } = await supabase
         .from('buses')
         .select('*');
+
+      // Fetch buses for active trips
+      let tripsWithBuses = activeTrips || [];
+      if (activeTrips && activeTrips.length > 0) {
+        const busIds = activeTrips.map(t => t.bus_id).filter(Boolean);
+        const { data: buses } = await supabase
+          .from('buses')
+          .select('id, bus_number, plate_number, route')
+          .in('id', busIds);
+        const busesMap = new Map((buses || []).map(b => [b.id, b]));
+        tripsWithBuses = activeTrips.map(trip => ({
+          ...trip,
+          buses: busesMap.get(trip.bus_id)
+        }));
+      }
 
       const { data: gpsRows } = await (supabase
         .from('gps_locations')
@@ -388,7 +403,7 @@ export default function Dashboard() {
       });
 
       // Transform trips to bus markers
-      const busMarkers = (activeTrips || []).map((trip: any, index: number) => {
+      const busMarkers = (tripsWithBuses || []).map((trip: any, index: number) => {
         const gps = latestGpsByTripId[trip.id] || (index === 0 ? latestGpsAny : null);
 
         return {
