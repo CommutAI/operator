@@ -166,8 +166,11 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
         </div>
         {/* End Video Feed */}
 
-        {/* Stats grid 3-col */}
-        <div className="grid grid-cols-3 gap-2">
+      </div>
+      {/* End feed wrapper */}
+
+      {/* Stats grid — 3 columns below feed */}
+      <div className="grid grid-cols-3 gap-2">
           <div className="glass-card rounded-lg px-3 py-2.5 flex items-center gap-2">
             <div className="w-7 h-7 bg-orange-500/20 rounded-md flex items-center justify-center flex-shrink-0">
               <Users className="w-3.5 h-3.5 text-orange-400" />
@@ -225,9 +228,6 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
           </div>
         </div>
         {/* End Stats grid */}
-
-      </div>
-      {/* End Feed + Stats */}
     </div>
   );
 };
