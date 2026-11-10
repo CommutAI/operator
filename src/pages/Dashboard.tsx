@@ -406,12 +406,18 @@ export default function Dashboard() {
       const busMarkers = (tripsWithBuses || []).map((trip: any, index: number) => {
         const gps = latestGpsByTripId[trip.id] || (index === 0 ? latestGpsAny : null);
 
+        // Use GPS if valid, otherwise use default coordinates
+        // Invalid GPS is lat=0, lng=0 or trip_id=null
+        const isValidGps = gps && gps.lat !== 0 && gps.lng !== 0 && gps.tripId === trip.id;
+        const lat = isValidGps ? gps.lat : 8.429; // Default to Cagayan de Oro
+        const lng = isValidGps ? gps.lng : 124.762;
+
         return {
           id: trip.id,
           plate: trip.buses?.bus_number || trip.buses?.plate_number || 'Unknown',
           route: trip.buses?.route || 'Unknown',
-          lat: gps?.lat ?? trip.current_lat ?? 8.429,
-          lng: gps?.lng ?? trip.current_lng ?? 124.762,
+          lat: lat,
+          lng: lng,
           passengers: 0,
           status: 'active',
           locationSource: gps ? (gps.tripId ? gps.source : `${gps.source} (latest GPS)`) : 'fallback',
