@@ -159,7 +159,7 @@ export default function Dashboard() {
     connectionMessage: videoConnectionMessage,
     videoRef,
     refresh: videoRefresh,
-  } = useBackendVideo({ autoConnect: true });
+  } = useBackendVideo({ autoConnect: false });
 
   useEffect(() => {
     fetchDashboardData();

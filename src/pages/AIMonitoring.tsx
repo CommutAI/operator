@@ -46,7 +46,7 @@ export default function AIMonitoring() {
     connectionMessage: videoConnectionMessage,
     videoRef,
     refresh: videoRefresh,
-  } = useBackendVideo({ autoConnect: true });
+  } = useBackendVideo({ autoConnect: false });
 
   const totalPages = Math.ceil(
     detectionHistory.filter(item => {
