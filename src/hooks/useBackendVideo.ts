@@ -23,9 +23,8 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
   const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const deadRef = useRef(false);
 
-  // Use hardcoded Pi IP for now (same as system-admin)
-  const piIp = '192.168.1.54';
-  const piUrl = `http://${piIp}:5000`;
+  // Use environment variable for Raspberry Pi URL (Cloudflare tunnel/ngrok)
+  const piUrl = import.meta.env.VITE_RASPBERRY_PI_URL || 'http://192.168.1.54:5000';
   const wsUrl = piUrl.replace('http', 'ws') + '/ws';
 
   function clearTimers() {
