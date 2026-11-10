@@ -85,12 +85,12 @@ export default function AIMonitoring() {
           .eq('resolved', false),
         supabase
           .from('passenger_counts')
-          .select('count, recorded_at, trip_id, trips(buses(*))')
+          .select('count, recorded_at, trip_id')
           .order('recorded_at', { ascending: false })
           .limit(100),
         supabase
           .from('fare_irregularities')
-          .select('*, trips(buses(*))')
+          .select('*')
           .order('detected_at', { ascending: false })
           .limit(50)
       ]);
@@ -100,14 +100,68 @@ export default function AIMonitoring() {
       const total = (passengerData || []).reduce((sum: number, pc: any) => sum + (pc.count || 0), 0);
       setTotalPassengers(total);
 
-      setPassengerCounts(passengerData || []);
-      setIrregularities(irregularitiesData || []);
+      // Fetch trips and buses for passenger counts
+      let passengerDataWithBus = passengerData || [];
+      if (passengerData && passengerData.length > 0) {
+        const tripIds = passengerData.map(pc => pc.trip_id).filter(Boolean);
+        const { data: trips } = await supabase
+          .from('trips')
+          .select('id, bus_id')
+          .in('id', tripIds);
+        const tripsMap = new Map((trips || []).map(t => [t.id, t]));
+
+        const busIds = (trips || []).map(t => t.bus_id).filter(Boolean);
+        const { data: buses } = await supabase
+          .from('buses')
+          .select('id, bus_number, plate_number')
+          .in('id', busIds);
+        const busesMap = new Map((buses || []).map(b => [b.id, b]));
+
+        passengerDataWithBus = passengerData.map(pc => {
+          const trip = tripsMap.get(pc.trip_id);
+          const bus = trip ? busesMap.get(trip.bus_id) : null;
+          return {
+            ...pc,
+            trips: trip ? { ...trip, buses: bus } : null
+          };
+        });
+      }
+
+      // Fetch trips and buses for irregularities
+      let irregularitiesDataWithBus = irregularitiesData || [];
+      if (irregularitiesData && irregularitiesData.length > 0) {
+        const tripIds = irregularitiesData.map(irr => irr.trip_id).filter(Boolean);
+        const { data: trips } = await supabase
+          .from('trips')
+          .select('id, bus_id')
+          .in('id', tripIds);
+        const tripsMap = new Map((trips || []).map(t => [t.id, t]));
+
+        const busIds = (trips || []).map(t => t.bus_id).filter(Boolean);
+        const { data: buses } = await supabase
+          .from('buses')
+          .select('id, bus_number, plate_number')
+          .in('id', busIds);
+        const busesMap = new Map((buses || []).map(b => [b.id, b]));
+
+        irregularitiesDataWithBus = irregularitiesData.map(irr => {
+          const trip = tripsMap.get(irr.trip_id);
+          const bus = trip ? busesMap.get(trip.bus_id) : null;
+          return {
+            ...irr,
+            trips: trip ? { ...trip, buses: bus } : null
+          };
+        });
+      }
+
+      setPassengerCounts(passengerDataWithBus);
+      setIrregularities(irregularitiesDataWithBus);
 
       // Build detection history from actual data
       const history: DetectionEvent[] = [];
 
       // Add passenger count events
-      (passengerData || []).forEach((pc: any) => {
+      (passengerDataWithBus || []).forEach((pc: any) => {
         const minutesAgo = Math.floor((Date.now() - new Date(pc.recorded_at).getTime()) / 60000);
         const busNumber = pc.trips?.buses?.bus_number || pc.trips?.buses?.plate_number || 'Unknown';
         history.push({
@@ -122,7 +176,7 @@ export default function AIMonitoring() {
       });
 
       // Add irregularity events
-      (irregularitiesData || []).forEach((irr: any) => {
+      (irregularitiesDataWithBus || []).forEach((irr: any) => {
         const minutesAgo = Math.floor((Date.now() - new Date(irr.detected_at).getTime()) / 60000);
         const busNumber = irr.trips?.buses?.bus_number || irr.trips?.buses?.plate_number || 'Unknown';
         history.push({
