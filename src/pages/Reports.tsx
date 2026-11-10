@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, Calendar, TrendingUp, Users, DollarSign, Bus, Activity, ArrowUp, ArrowDown, Search, ChevronLeft, ChevronRight, Clock, MapPin, CheckCircle, AlertCircle, Settings, X, SortAsc, SortDesc } from 'lucide-react';
+import { FileText, Download, Calendar, TrendingUp, Users, DollarSign, Bus, Activity, ArrowUp, ArrowDown, Search, ChevronLeft, ChevronRight, Clock, MapPin, CheckCircle, AlertCircle, Settings, X, SortAsc, SortDesc, CreditCard, ShieldAlert, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Transaction {
@@ -80,6 +80,38 @@ interface Trip {
   };
 }
 
+interface CardReload {
+  id: string;
+  card_id: string;
+  amount: string;
+  reload_method: string;
+  reference_number: string | null;
+  reload_location: string | null;
+  status: string;
+  recorded_at: string;
+  created_at: string;
+  qr_cards?: {
+    card_uid: string;
+    owner_name: string;
+  };
+}
+
+interface FareIrregularity {
+  id: string;
+  trip_id: string;
+  type: string;
+  description: string;
+  detected_at: string;
+  resolved: boolean;
+  resolved_at: string | null;
+  severity: string | null;
+  anomaly_type: string | null;
+  status: string | null;
+  investigation_notes: string | null;
+  resolution_notes: string | null;
+  escalation_level: number | null;
+}
+
 export default function Reports() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('trips');
@@ -134,6 +166,45 @@ export default function Reports() {
       { id: 'trip_id', label: 'Trip ID' },
       { id: 'created_at', label: 'Created At' },
     ],
+    card_reload: [
+      { id: 'id', label: 'Reload ID' },
+      { id: 'card_id', label: 'Card ID' },
+      { id: 'card_uid', label: 'Card UID' },
+      { id: 'owner_name', label: 'Card Owner' },
+      { id: 'amount', label: 'Amount' },
+      { id: 'reload_method', label: 'Reload Method' },
+      { id: 'reference_number', label: 'Reference No.' },
+      { id: 'reload_location', label: 'Location' },
+      { id: 'status', label: 'Status' },
+      { id: 'recorded_at', label: 'Recorded At' },
+    ],
+    irregularity: [
+      { id: 'id', label: 'Irregularity ID' },
+      { id: 'trip_id', label: 'Trip ID' },
+      { id: 'type', label: 'Type' },
+      { id: 'anomaly_type', label: 'Anomaly Type' },
+      { id: 'severity', label: 'Severity' },
+      { id: 'description', label: 'Description' },
+      { id: 'status', label: 'Status' },
+      { id: 'resolved', label: 'Resolved' },
+      { id: 'escalation_level', label: 'Escalation Level' },
+      { id: 'investigation_notes', label: 'Investigation Notes' },
+      { id: 'resolution_notes', label: 'Resolution Notes' },
+      { id: 'detected_at', label: 'Detected At' },
+      { id: 'resolved_at', label: 'Resolved At' },
+    ],
+    anomaly: [
+      { id: 'id', label: 'ID' },
+      { id: 'trip_id', label: 'Trip ID' },
+      { id: 'anomaly_type', label: 'Anomaly Type' },
+      { id: 'severity', label: 'Severity' },
+      { id: 'description', label: 'Description' },
+      { id: 'status', label: 'Status' },
+      { id: 'escalation_level', label: 'Escalation Level' },
+      { id: 'resolved', label: 'Resolved' },
+      { id: 'investigation_notes', label: 'Investigation Notes' },
+      { id: 'detected_at', label: 'Detected At' },
+    ],
   };
 
   useEffect(() => {
@@ -148,7 +219,15 @@ export default function Reports() {
       setSelectedExportColumns(['id', 'bus_id', 'status', 'total_passengers', 'total_fares', 'started_at']);
     } else if (reportType === 'revenue') {
       setSelectedExportColumns(['id', 'transaction_type', 'amount', 'payment_method', 'created_at']);
+    } else if (reportType === 'card_reload') {
+      setSelectedExportColumns(['id', 'card_uid', 'owner_name', 'amount', 'reload_method', 'status', 'recorded_at']);
+    } else if (reportType === 'irregularity') {
+      setSelectedExportColumns(['id', 'trip_id', 'type', 'severity', 'status', 'resolved', 'detected_at']);
+    } else if (reportType === 'anomaly') {
+      setSelectedExportColumns(['id', 'trip_id', 'anomaly_type', 'severity', 'status', 'resolved', 'detected_at']);
     }
+    setReportGenerated(false);
+    setGeneratedReport([]);
   }, [reportType]);
 
   useEffect(() => {
@@ -410,6 +489,63 @@ export default function Reports() {
             return row;
           });
         }
+      } else if (reportType === 'card_reload') {
+        const { data: reloadData, error: reloadError } = await supabase
+          .from('card_reloads')
+          .select('id, card_id, amount, reload_method, reference_number, reload_location, status, recorded_at, created_at, qr_cards(card_uid, owner_name)')
+          .order('recorded_at', { ascending: false })
+          .limit(500);
+
+        if (reloadError) throw new Error(reloadError.message || 'Failed to fetch card reload data');
+
+        if (!reloadData || reloadData.length === 0) {
+          alert('No card reload records found in database');
+        } else {
+          reportData = reloadData.map((r: any) => {
+            const row: any = {};
+            if (selectedExportColumns.includes('id')) row['Reload ID'] = r.id || 'N/A';
+            if (selectedExportColumns.includes('card_id')) row['Card ID'] = r.card_id || 'N/A';
+            if (selectedExportColumns.includes('card_uid')) row['Card UID'] = r.qr_cards?.card_uid || 'N/A';
+            if (selectedExportColumns.includes('owner_name')) row['Card Owner'] = r.qr_cards?.owner_name || 'N/A';
+            if (selectedExportColumns.includes('amount')) row['Amount'] = r.amount ? `₱${Number(r.amount).toFixed(2)}` : 'N/A';
+            if (selectedExportColumns.includes('reload_method')) row['Reload Method'] = r.reload_method || 'N/A';
+            if (selectedExportColumns.includes('reference_number')) row['Reference No.'] = r.reference_number || 'N/A';
+            if (selectedExportColumns.includes('reload_location')) row['Location'] = r.reload_location || 'N/A';
+            if (selectedExportColumns.includes('status')) row['Status'] = r.status || 'N/A';
+            if (selectedExportColumns.includes('recorded_at')) row['Recorded At'] = r.recorded_at ? new Date(r.recorded_at).toLocaleString() : 'N/A';
+            return row;
+          });
+        }
+      } else if (reportType === 'irregularity' || reportType === 'anomaly') {
+        const query = reportType === 'anomaly'
+          ? supabase.from('fare_irregularities').select('id, trip_id, type, description, detected_at, resolved, resolved_at, severity, anomaly_type, status, investigation_notes, resolution_notes, escalation_level').not('anomaly_type', 'is', null).order('detected_at', { ascending: false }).limit(500)
+          : supabase.from('fare_irregularities').select('id, trip_id, type, description, detected_at, resolved, resolved_at, severity, anomaly_type, status, investigation_notes, resolution_notes, escalation_level').order('detected_at', { ascending: false }).limit(500);
+
+        const { data: irData, error: irError } = await query;
+
+        if (irError) throw new Error(irError.message || 'Failed to fetch irregularity data');
+
+        if (!irData || irData.length === 0) {
+          alert(`No ${reportType === 'anomaly' ? 'anomaly' : 'irregularity'} records found in database`);
+        } else {
+          reportData = irData.map((ir: any) => {
+            const row: any = {};
+            if (selectedExportColumns.includes('id')) row['ID'] = ir.id || 'N/A';
+            if (selectedExportColumns.includes('trip_id')) row['Trip ID'] = ir.trip_id || 'N/A';
+            if (selectedExportColumns.includes('type')) row['Type'] = ir.type || 'N/A';
+            if (selectedExportColumns.includes('anomaly_type')) row['Anomaly Type'] = ir.anomaly_type || 'N/A';
+            if (selectedExportColumns.includes('severity')) row['Severity'] = ir.severity || 'N/A';
+            if (selectedExportColumns.includes('description')) row['Description'] = ir.description || 'N/A';
+            if (selectedExportColumns.includes('status')) row['Status'] = ir.status || 'N/A';
+            if (selectedExportColumns.includes('resolved')) row['Resolved'] = ir.resolved ? 'Yes' : 'No';
+            if (selectedExportColumns.includes('escalation_level')) row['Escalation Level'] = ir.escalation_level ?? 0;
+            if (selectedExportColumns.includes('investigation_notes')) row['Investigation Notes'] = ir.investigation_notes || 'N/A';
+            if (selectedExportColumns.includes('resolution_notes')) row['Resolution Notes'] = ir.resolution_notes || 'N/A';
+            if (selectedExportColumns.includes('detected_at')) row['Detected At'] = ir.detected_at ? new Date(ir.detected_at).toLocaleString() : 'N/A';
+            if (selectedExportColumns.includes('resolved_at')) row['Resolved At'] = ir.resolved_at ? new Date(ir.resolved_at).toLocaleString() : 'N/A';
+            return row;
+          });
+        }
       }
 
       console.log('Generated report data:', reportData);
@@ -528,6 +664,9 @@ export default function Reports() {
             >
               <option value="trips">Trips</option>
               <option value="revenue">Revenue</option>
+              <option value="card_reload">Card Reloads</option>
+              <option value="irregularity">Fare Irregularities</option>
+              <option value="anomaly">Anomaly Detections</option>
             </select>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -642,7 +781,7 @@ export default function Reports() {
 
           {/* Report Type Selection */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-white/5 border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer"
+            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'trips' ? 'border-blue-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('trips')}>
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-3 bg-blue-500/20 rounded-lg">
@@ -655,7 +794,7 @@ export default function Reports() {
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer"
+            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'revenue' ? 'border-green-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('revenue')}>
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-3 bg-green-500/20 rounded-lg">
@@ -664,6 +803,45 @@ export default function Reports() {
                 <div>
                   <h3 className="text-white font-bold">Revenue Report</h3>
                   <p className="text-white/60 text-sm">Financial transactions and income</p>
+                </div>
+              </div>
+            </div>
+
+            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'card_reload' ? 'border-purple-500/60' : 'border-white/10'}`}
+                 onClick={() => setReportType('card_reload')}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-3 bg-purple-500/20 rounded-lg">
+                  <CreditCard size={24} className="text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Card Reloads Report</h3>
+                  <p className="text-white/60 text-sm">Card top-up transactions by method and owner</p>
+                </div>
+              </div>
+            </div>
+
+            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'irregularity' ? 'border-red-500/60' : 'border-white/10'}`}
+                 onClick={() => setReportType('irregularity')}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-3 bg-red-500/20 rounded-lg">
+                  <ShieldAlert size={24} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Fare Irregularities Report</h3>
+                  <p className="text-white/60 text-sm">Detected fare evasion and mismatches</p>
+                </div>
+              </div>
+            </div>
+
+            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'anomaly' ? 'border-yellow-500/60' : 'border-white/10'}`}
+                 onClick={() => setReportType('anomaly')}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-3 bg-yellow-500/20 rounded-lg">
+                  <Zap size={24} className="text-yellow-400" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Anomaly Detections Report</h3>
+                  <p className="text-white/60 text-sm">AI-flagged anomalies from fare irregularities</p>
                 </div>
               </div>
             </div>
@@ -678,6 +856,9 @@ export default function Reports() {
             >
               <option value="trips">Trips</option>
               <option value="revenue">Revenue</option>
+              <option value="card_reload">Card Reloads</option>
+              <option value="irregularity">Fare Irregularities</option>
+              <option value="anomaly">Anomaly Detections</option>
             </select>
           </div>
 
