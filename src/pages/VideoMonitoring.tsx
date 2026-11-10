@@ -102,10 +102,9 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
         </div>
       </div>
 
-      {/* Full-width Video Feed */}
+      {/* Video Feed */}
       <div className="glass-card rounded-xl overflow-hidden">
-        {/* Relative container — 16:9 */}
-        <div className="relative w-full bg-black" style={{ paddingBottom: '56.25%' }}>
+        <div className="relative bg-black" style={{ width: '100%', height: '480px' }}>
           {/* Always-mounted img for WebSocket frames */}
           <img
             ref={videoRef}
