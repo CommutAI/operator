@@ -613,15 +613,15 @@ export default function Dashboard() {
       </div>
 
       {/* Video Monitoring - Dashboard Widget */}
-      <div className="glass-card p-6 border-2 border-orange-500/20">
+      <div className="glass-card p-4 lg:p-6 border-2 border-orange-500/20">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <h2 className="text-lg lg:text-xl font-bold text-white flex items-center gap-2">
             <Video className="text-orange-400" size={20} />
             Video Monitoring
           </h2>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-            <span className="text-white/60 text-sm">{videoConnectionStatus}</span>
+            <span className="text-white/60 text-xs lg:text-sm hidden sm:inline">{videoConnectionStatus}</span>
             <button
               onClick={videoRefresh}
               className="bg-white/10 hover:bg-white/20 text-white p-1 rounded transition-colors"
@@ -631,9 +631,9 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Video Feed */}
-          <div className="col-span-2 relative bg-black rounded-lg h-96 overflow-hidden">
+          <div className="lg:col-span-2 relative bg-black rounded-lg h-64 sm:h-80 lg:h-96 overflow-hidden">
             <img
               ref={videoRef}
               alt="Live video feed"
@@ -641,7 +641,7 @@ export default function Dashboard() {
             />
             {!videoStreaming && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
+                <div className="text-center px-4">
                   <Video className="text-white/30 mx-auto mb-2" size={32} />
                   <p className="text-white/40 text-sm">
                     {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : videoConnectionMessage || 'Video feed unavailable'}
@@ -669,7 +669,7 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-          
+
           {/* Video Details Sidebar */}
           <div className="col-span-1 space-y-3">
             <div className="glass-card p-3">
@@ -681,7 +681,7 @@ export default function Dashboard() {
                 </span>
               </div>
             </div>
-            
+
             <div className="glass-card p-3">
               <div className="text-white/70 text-xs mb-2">Passenger Count</div>
               <div className="flex items-center gap-2">
@@ -689,14 +689,14 @@ export default function Dashboard() {
                 <span className="text-white text-2xl font-bold">{videoPassengerCount}</span>
               </div>
             </div>
-            
+
             <div className="glass-card p-3">
               <div className="text-white/70 text-xs mb-2">Connection</div>
               <div className="text-white text-sm">
                 {videoConnectionStatus}
               </div>
             </div>
-            
+
             <div className="glass-card p-3">
               <div className="text-white/70 text-xs mb-2">AI Detection</div>
               <div className="flex items-center gap-2">
@@ -704,12 +704,12 @@ export default function Dashboard() {
                 <span className="text-white text-sm font-medium">YOLOv8n</span>
               </div>
             </div>
-            
+
             <div className="glass-card p-3">
               <div className="text-white/70 text-xs mb-2">Resolution</div>
               <div className="text-white text-sm">640x480 @ 30fps</div>
             </div>
-            
+
             <button
               onClick={videoRefresh}
               className="w-full py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
@@ -722,32 +722,32 @@ export default function Dashboard() {
       </div>
 
       {/* Live Map - Embedded */}
-      <div className="glass-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+      <div className="glass-card p-4 lg:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+          <h2 className="text-lg lg:text-xl font-bold text-white flex items-center gap-2">
             <MapIcon className="text-blue-400" size={20} />
             Live Bus Tracking
           </h2>
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-3 lg:gap-4 text-xs sm:text-sm">
             <div className="flex items-center gap-2 text-white/70">
-              <Navigation size={16} />
+              <Navigation size={14} />
               <span>{mapStats.totalRoutes} Routes</span>
             </div>
             <div className="flex items-center gap-2 text-white/70">
-              <Bus size={16} />
+              <Bus size={14} />
               <span>{mapStats.activeBuses} Active</span>
             </div>
             <div className="flex items-center gap-2 text-white/70">
-              <Users size={16} />
+              <Users size={14} />
               <span>{mapStats.totalPassengers} Passengers</span>
             </div>
           </div>
         </div>
-        
-        <div className="h-[500px] rounded-xl overflow-hidden">
-          <MapContainer 
-            center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.429, 124.762]} 
-            zoom={13} 
+
+        <div className="h-[400px] sm:h-[500px] rounded-xl overflow-hidden">
+          <MapContainer
+            center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.429, 124.762]}
+            zoom={13}
             style={{ height: '100%', width: '100%' }}
             dragging={true}
             scrollWheelZoom={true}
@@ -779,17 +779,17 @@ export default function Dashboard() {
       </div>
 
       {/* Active Trips & Revenue */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Active Trips List */}
-        <div className="lg:col-span-2 glass-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+        <div className="lg:col-span-2 glass-card p-4 lg:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 lg:mb-6 gap-3">
+            <h2 className="text-lg lg:text-xl font-bold text-white flex items-center gap-2">
               <Activity className="text-orange-400" size={20} />
               Active Trips
             </h2>
-            <div className="flex items-center gap-4">
-              <span className="text-white/60 text-sm">{kpiData.activeTrips} in progress</span>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 lg:gap-4">
+              <span className="text-white/60 text-xs lg:text-sm">{kpiData.activeTrips} in progress</span>
+              <div className="flex items-center gap-1 lg:gap-2">
                 <button
                   onClick={() => handleTripsSort('bus_number')}
                   className={`text-xs px-2 py-1 rounded transition-colors ${
@@ -836,14 +836,14 @@ export default function Dashboard() {
           {sortedTrips.length > 0 ? (
             <div className="space-y-3">
               {sortedTrips.map((trip: any) => (
-                <div key={trip.id} className="bg-white/5 rounded-xl p-4 border border-white/10 hover:bg-white/10 transition-colors">
+                <div key={trip.id} className="bg-white/5 rounded-xl p-3 lg:p-4 border border-white/10 hover:bg-white/10 transition-colors">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 lg:gap-3">
                       <div className="p-2 rounded-lg bg-orange-500/20">
                         <Bus className="text-orange-400" size={16} />
                       </div>
                       <div>
-                        <p className="text-white font-medium">Bus #{trip.buses?.bus_number || 'N/A'}</p>
+                        <p className="text-white font-medium text-sm lg:text-base">Bus #{trip.buses?.bus_number || 'N/A'}</p>
                         <p className="text-white/60 text-xs">{trip.buses?.route || 'Unknown Route'}</p>
                       </div>
                     </div>
@@ -868,8 +868,8 @@ export default function Dashboard() {
         </div>
 
         {/* Revenue Trend Chart */}
-        <div className="glass-card p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <div className="glass-card p-4 lg:p-6">
+          <h2 className="text-lg lg:text-xl font-bold text-white mb-4 flex items-center gap-2">
             <TrendingUp className="text-green-400" size={20} />
             Revenue (7 Days)
           </h2>
@@ -943,13 +943,13 @@ export default function Dashboard() {
       </div>
 
       {/* Active Irregularities Section */}
-      <div className="glass-card p-6 border-l-4 border-orange-500">
+      <div className="glass-card p-4 lg:p-6 border-l-4 border-orange-500">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <h2 className="text-lg lg:text-xl font-bold text-white flex items-center gap-2">
             <AlertTriangle className="text-orange-400" size={20} />
             Active Irregularities
           </h2>
-          <span className="text-white/60 text-sm">{irregularities.length} unresolved</span>
+          <span className="text-white/60 text-xs lg:text-sm">{irregularities.length} unresolved</span>
         </div>
 
         {irregularities.length === 0 ? (
@@ -963,10 +963,10 @@ export default function Dashboard() {
               {irregularities
                 .slice(irregularitiesPage * irregularitiesPerPage, (irregularitiesPage + 1) * irregularitiesPerPage)
                 .map((irregularity: any) => (
-                  <div key={irregularity.id} className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
-                    <div className="flex items-start justify-between">
+                  <div key={irregularity.id} className="bg-orange-500/10 rounded-lg p-3 lg:p-4 border border-orange-500/30">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 rounded text-xs font-medium capitalize">
                             {irregularity.type}
                           </span>
@@ -976,14 +976,14 @@ export default function Dashboard() {
                             </span>
                           )}
                         </div>
-                        <p className="text-white font-medium">{irregularity.description}</p>
+                        <p className="text-white font-medium text-sm">{irregularity.description}</p>
                         <p className="text-white/60 text-xs mt-1">
                           {new Date(irregularity.detected_at).toLocaleString()}
                         </p>
                       </div>
                       <button
                         onClick={() => handleResolveIrregularity(irregularity.id)}
-                        className="ml-4 px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                        className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 self-start sm:self-auto"
                       >
                         <CheckCircle size={14} />
                         Resolve
@@ -996,7 +996,7 @@ export default function Dashboard() {
             {/* Pagination */}
             {irregularities.length > irregularitiesPerPage && (
               <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
-                <span className="text-white/60 text-sm">
+                <span className="text-white/60 text-xs lg:text-sm">
                   Showing {irregularitiesPage * irregularitiesPerPage + 1} to {Math.min((irregularitiesPage + 1) * irregularitiesPerPage, irregularities.length)} of {irregularities.length}
                 </span>
                 <div className="flex items-center gap-2">

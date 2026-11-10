@@ -585,24 +585,24 @@ export default function Reports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-white text-3xl font-bold mb-2">Reports Dashboard</h1>
-          <p className="text-white/60">System analytics and report generation</p>
+          <h1 className="text-white text-2xl lg:text-3xl font-bold mb-2">Reports Dashboard</h1>
+          <p className="text-white/60 text-sm lg:text-base">System analytics and report generation</p>
         </div>
         {activeTab === 'reports' && (
-          <div className="flex gap-3">
+          <div className="flex gap-2 lg:gap-3">
             <button
               onClick={() => setShowExportColumns(!showExportColumns)}
-              className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors"
+              className="bg-white/10 hover:bg-white/20 text-white px-3 lg:px-4 py-2 rounded-xl flex items-center gap-2 transition-colors text-sm lg:text-base"
             >
               <Settings size={18} />
-              Columns
+              <span className="hidden sm:inline">Columns</span>
             </button>
             {!reportGenerated ? (
               <button
                 onClick={generateReport}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors"
+                className="bg-blue-500 hover:bg-blue-600 text-white px-3 lg:px-4 py-2 rounded-xl flex items-center gap-2 transition-colors text-sm lg:text-base"
               >
                 <FileText size={18} />
                 Generate Report
@@ -645,7 +645,7 @@ export default function Reports() {
 
       {/* Export Column Selector */}
       {showExportColumns && activeTab === 'reports' && (
-        <div className="glass-card p-6">
+        <div className="glass-card p-4 lg:p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white text-lg font-bold">Select Export Columns</h3>
             <button
@@ -669,7 +669,7 @@ export default function Reports() {
               <option value="anomaly">Anomaly Detections</option>
             </select>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {availableColumns[reportType as keyof typeof availableColumns]?.map(col => (
               <label key={col.id} className="flex items-center gap-2 p-3 bg-white/5 rounded-lg hover:bg-white/10 cursor-pointer transition-colors">
                 <input
@@ -773,14 +773,14 @@ export default function Reports() {
 
       {/* Reports Tab */}
       {activeTab === 'reports' && (
-        <div className="glass-card p-6">
-          <h2 className="text-white text-xl font-bold mb-4 flex items-center gap-2">
+        <div className="glass-card p-4 lg:p-6">
+          <h2 className="text-white text-lg lg:text-xl font-bold mb-4 flex items-center gap-2">
             <FileText className="text-orange-400" />
             Generate Custom Report
           </h2>
 
           {/* Report Type Selection */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
             <div className={`bg-white/5 border rounded-xl p-4 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'trips' ? 'border-blue-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('trips')}>
               <div className="flex flex-col gap-2">
