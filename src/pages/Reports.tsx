@@ -780,68 +780,68 @@ export default function Reports() {
           </h2>
 
           {/* Report Type Selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'trips' ? 'border-blue-500/60' : 'border-white/10'}`}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+            <div className={`bg-white/5 border rounded-xl p-4 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'trips' ? 'border-blue-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('trips')}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-3 bg-blue-500/20 rounded-lg">
-                  <Bus size={24} className="text-blue-400" />
+              <div className="flex flex-col gap-2">
+                <div className="p-2 bg-blue-500/20 rounded-lg w-fit">
+                  <Bus size={18} className="text-blue-400" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold">Trips Report</h3>
-                  <p className="text-white/60 text-sm">Trip records with bus and conductor info</p>
+                  <h3 className="text-white font-semibold text-sm">Trips Report</h3>
+                  <p className="text-white/50 text-xs mt-0.5">Trip records with bus and conductor info</p>
                 </div>
               </div>
             </div>
 
-            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'revenue' ? 'border-green-500/60' : 'border-white/10'}`}
+            <div className={`bg-white/5 border rounded-xl p-4 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'revenue' ? 'border-green-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('revenue')}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-3 bg-green-500/20 rounded-lg">
-                  <DollarSign size={24} className="text-green-400" />
+              <div className="flex flex-col gap-2">
+                <div className="p-2 bg-green-500/20 rounded-lg w-fit">
+                  <DollarSign size={18} className="text-green-400" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold">Revenue Report</h3>
-                  <p className="text-white/60 text-sm">Financial transactions and income</p>
+                  <h3 className="text-white font-semibold text-sm">Revenue Report</h3>
+                  <p className="text-white/50 text-xs mt-0.5">Financial transactions and income</p>
                 </div>
               </div>
             </div>
 
-            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'card_reload' ? 'border-purple-500/60' : 'border-white/10'}`}
+            <div className={`bg-white/5 border rounded-xl p-4 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'card_reload' ? 'border-purple-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('card_reload')}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-3 bg-purple-500/20 rounded-lg">
-                  <CreditCard size={24} className="text-purple-400" />
+              <div className="flex flex-col gap-2">
+                <div className="p-2 bg-purple-500/20 rounded-lg w-fit">
+                  <CreditCard size={18} className="text-purple-400" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold">Card Reloads Report</h3>
-                  <p className="text-white/60 text-sm">Card top-up transactions by method and owner</p>
+                  <h3 className="text-white font-semibold text-sm">Card Reloads Report</h3>
+                  <p className="text-white/50 text-xs mt-0.5">Card top-up transactions by method and owner</p>
                 </div>
               </div>
             </div>
 
-            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'irregularity' ? 'border-red-500/60' : 'border-white/10'}`}
+            <div className={`bg-white/5 border rounded-xl p-4 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'irregularity' ? 'border-red-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('irregularity')}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-3 bg-red-500/20 rounded-lg">
-                  <ShieldAlert size={24} className="text-red-400" />
+              <div className="flex flex-col gap-2">
+                <div className="p-2 bg-red-500/20 rounded-lg w-fit">
+                  <ShieldAlert size={18} className="text-red-400" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold">Fare Irregularities Report</h3>
-                  <p className="text-white/60 text-sm">Detected fare evasion and mismatches</p>
+                  <h3 className="text-white font-semibold text-sm">Fare Irregularities Report</h3>
+                  <p className="text-white/50 text-xs mt-0.5">Detected fare evasion and mismatches</p>
                 </div>
               </div>
             </div>
 
-            <div className={`bg-white/5 border rounded-xl p-6 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'anomaly' ? 'border-yellow-500/60' : 'border-white/10'}`}
+            <div className={`bg-white/5 border rounded-xl p-4 hover:bg-white/10 transition-colors cursor-pointer ${reportType === 'anomaly' ? 'border-yellow-500/60' : 'border-white/10'}`}
                  onClick={() => setReportType('anomaly')}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-3 bg-yellow-500/20 rounded-lg">
-                  <Zap size={24} className="text-yellow-400" />
+              <div className="flex flex-col gap-2">
+                <div className="p-2 bg-yellow-500/20 rounded-lg w-fit">
+                  <Zap size={18} className="text-yellow-400" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold">Anomaly Detections Report</h3>
-                  <p className="text-white/60 text-sm">AI-flagged anomalies from fare irregularities</p>
+                  <h3 className="text-white font-semibold text-sm">Anomaly Detections Report</h3>
+                  <p className="text-white/50 text-xs mt-0.5">AI-flagged anomalies from fare irregularities</p>
                 </div>
               </div>
             </div>
