@@ -102,9 +102,12 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
         </div>
       </div>
 
-      {/* Video Feed */}
-      <div className="glass-card rounded-xl overflow-hidden">
-        <div className="relative bg-black" style={{ width: '100%', height: '640px' }}>
+      {/* Feed + Stats side by side */}
+      <div className="flex gap-3 items-stretch">
+
+        {/* Video Feed */}
+        <div className="glass-card rounded-xl overflow-hidden flex-1 min-w-0">
+          <div className="relative bg-black" style={{ width: '100%', height: '640px' }}>
           {/* Always-mounted img for WebSocket frames */}
           <img
             ref={videoRef}
@@ -160,66 +163,71 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
             </div>
           )}
         </div>
+        </div>
+        {/* End Video Feed */}
+
+        {/* Stats column */}
+        <div className="flex flex-col gap-2 w-44 flex-shrink-0">
+          <div className="glass-card rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 bg-orange-500/20 rounded-md flex items-center justify-center flex-shrink-0">
+              <Users className="w-3.5 h-3.5 text-orange-400" />
+            </div>
+            <div>
+              <p className="text-white/50 text-[10px] leading-none">Passenger Count</p>
+              <p className="text-white text-lg font-bold leading-none mt-0.5">{passengerCount}</p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${
+              isStreaming ? 'bg-green-500/20' : 'bg-white/10'
+            }`}>
+              <Video className={`w-3.5 h-3.5 ${isStreaming ? 'text-green-400' : 'text-white/40'}`} />
+            </div>
+            <div>
+              <p className="text-white/50 text-[10px] leading-none">Current Status</p>
+              <p className={`text-xs font-bold leading-none mt-0.5 ${isStreaming ? 'text-green-400' : 'text-white/50'}`}>
+                {isStreaming ? 'Streaming' : 'Inactive'}
+              </p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${
+              connectionStatus === 'connected' || isStreaming ? 'bg-blue-500/20' : 'bg-white/10'
+            }`}>
+              <Wifi className={`w-3.5 h-3.5 ${connectionStatus === 'connected' || isStreaming ? 'text-blue-400' : 'text-white/40'}`} />
+            </div>
+            <div>
+              <p className="text-white/50 text-[10px] leading-none">Connection</p>
+              <p className="text-white text-xs font-bold leading-none mt-0.5 capitalize">{connectionStatus}</p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 bg-purple-500/20 rounded-md flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-3.5 h-3.5 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-white/50 text-[10px] leading-none">AI Detection</p>
+              <p className="text-white text-xs font-bold leading-none mt-0.5">YOLOv8n</p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 bg-white/10 rounded-md flex items-center justify-center flex-shrink-0">
+              <Video className="w-3.5 h-3.5 text-white/40" />
+            </div>
+            <div>
+              <p className="text-white/50 text-[10px] leading-none">Resolution</p>
+              <p className="text-white text-xs font-bold leading-none mt-0.5">640×480 @ 30fps</p>
+            </div>
+          </div>
+        </div>
+        {/* End Stats column */}
+
       </div>
-
-      {/* Stats + Camera Info row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2">
-        <div className="glass-card rounded-lg px-3 py-2 flex items-center gap-2">
-          <div className="w-7 h-7 bg-orange-500/20 rounded-md flex items-center justify-center flex-shrink-0">
-            <Users className="w-3.5 h-3.5 text-orange-400" />
-          </div>
-          <div>
-            <p className="text-white/50 text-[10px] leading-none">Passenger Count</p>
-            <p className="text-white text-base font-bold leading-none mt-0.5">{passengerCount}</p>
-          </div>
-        </div>
-
-        <div className="glass-card rounded-lg px-3 py-2 flex items-center gap-2">
-          <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${
-            isStreaming ? 'bg-green-500/20' : 'bg-white/10'
-          }`}>
-            <Video className={`w-3.5 h-3.5 ${isStreaming ? 'text-green-400' : 'text-white/40'}`} />
-          </div>
-          <div>
-            <p className="text-white/50 text-[10px] leading-none">Current Status</p>
-            <p className={`text-xs font-bold leading-none mt-0.5 ${isStreaming ? 'text-green-400' : 'text-white/50'}`}>
-              {isStreaming ? 'Streaming' : 'Inactive'}
-            </p>
-          </div>
-        </div>
-
-        <div className="glass-card rounded-lg px-3 py-2 flex items-center gap-2">
-          <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${
-            connectionStatus === 'connected' || isStreaming ? 'bg-blue-500/20' : 'bg-white/10'
-          }`}>
-            <Wifi className={`w-3.5 h-3.5 ${connectionStatus === 'connected' || isStreaming ? 'text-blue-400' : 'text-white/40'}`} />
-          </div>
-          <div>
-            <p className="text-white/50 text-[10px] leading-none">Connection</p>
-            <p className="text-white text-xs font-bold leading-none mt-0.5 capitalize">{connectionStatus}</p>
-          </div>
-        </div>
-
-        <div className="glass-card rounded-lg px-3 py-2 flex items-center gap-2">
-          <div className="w-7 h-7 bg-purple-500/20 rounded-md flex items-center justify-center flex-shrink-0">
-            <AlertCircle className="w-3.5 h-3.5 text-purple-400" />
-          </div>
-          <div>
-            <p className="text-white/50 text-[10px] leading-none">AI Detection</p>
-            <p className="text-white text-xs font-bold leading-none mt-0.5">YOLOv8n</p>
-          </div>
-        </div>
-
-        <div className="glass-card rounded-lg px-3 py-2 flex items-center gap-2">
-          <div className="w-7 h-7 bg-white/10 rounded-md flex items-center justify-center flex-shrink-0">
-            <Video className="w-3.5 h-3.5 text-white/40" />
-          </div>
-          <div>
-            <p className="text-white/50 text-[10px] leading-none">Resolution</p>
-            <p className="text-white text-xs font-bold leading-none mt-0.5">640×480 @ 30fps</p>
-          </div>
-        </div>
-      </div>
+      {/* End Feed + Stats */}
     </div>
   );
 };
