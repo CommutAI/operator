@@ -128,8 +128,8 @@ export default function Dashboard() {
     totalBuses: 0,
     activeTrips: 0,
     currentPassengers: 0,
-    totalPassengersToday: 0,
-    fareCollectedToday: 0,
+    totalPassengersAllTime: 0,
+    totalFaresAllTime: 0,
     activeIrregularities: 0,
     busesOnline: 0,
   });
@@ -220,23 +220,18 @@ export default function Dashboard() {
 
       setActiveTrips(tripsWithBuses);
 
-      // Fetch passenger counts for today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString();
+      // Fetch all passenger counts (all time)
       const { data: passengerCounts } = await supabase
         .from('passenger_counts')
         .select('count, ai_count')
-        .gte('recorded_at', todayStr)
         .limit(1000);
 
       const currentPassengers = passengerCounts?.reduce((sum, pc) => sum + (pc.count || 0), 0) || 0;
 
-      // Fetch transactions for today
+      // Fetch all transactions (all time)
       const { data: transactions } = await supabase
         .from('transactions')
         .select('amount')
-        .gte('created_at', todayStr)
         .limit(1000);
 
       const fareCollectedToday = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
@@ -334,8 +329,8 @@ export default function Dashboard() {
         totalBuses,
         activeTrips: trips?.length || 0,
         currentPassengers,
-        totalPassengersToday: currentPassengers,
-        fareCollectedToday,
+        totalPassengersAllTime: currentPassengers,
+        totalFaresAllTime: fareCollectedToday,
         activeIrregularities: irregularities?.length || 0,
         busesOnline,
       });
@@ -411,15 +406,6 @@ export default function Dashboard() {
         const isValidGps = gps && gps.lat !== 0 && gps.lng !== 0 && gps.tripId === trip.id;
         const lat = isValidGps ? gps.lat : 8.429; // Default to Cagayan de Oro
         const lng = isValidGps ? gps.lng : 124.762;
-
-        console.log('Bus marker:', {
-          id: trip.id,
-          plate: trip.buses?.bus_number || trip.buses?.plate_number,
-          lat,
-          lng,
-          isValidGps,
-          hasGps: !!gps
-        });
 
         return {
           id: trip.id,
@@ -611,15 +597,15 @@ export default function Dashboard() {
     {
       title: 'Passengers On Board',
       value: kpiData.currentPassengers,
-      subtitle: `${kpiData.totalPassengersToday} total today`,
+      subtitle: `${kpiData.totalPassengersAllTime} total all time`,
       icon: Users,
       color: 'text-blue-400',
       trend: 'Real-time',
     },
     {
-      title: 'Revenue Today',
-      value: `₱${kpiData.fareCollectedToday.toLocaleString()}`,
-      subtitle: 'Fare & baggage fees',
+      title: 'Total Revenue',
+      value: `₱${kpiData.totalFaresAllTime.toLocaleString()}`,
+      subtitle: 'Fare & baggage fees (all time)',
       icon: DollarSign,
       color: 'text-green-400',
       trend: '+12%',
