@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Bus, MapPin, CheckCircle, Clock, ChevronLeft, ChevronRight, Video, Play, Download } from 'lucide-react';
+import { Search, Bus, MapPin, CheckCircle, Clock, ChevronLeft, ChevronRight, Video, Play, Download, X, AlertTriangle, Receipt, Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Trip {
@@ -44,6 +44,9 @@ export default function TripManagement() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedVideo, setSelectedVideo] = useState<TripVideo | null>(null);
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [tripDetails, setTripDetails] = useState<any>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const itemsPerPage = 10;
 
   useEffect(() => {
@@ -93,6 +96,52 @@ export default function TripManagement() {
       console.error('Error fetching trips:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTripDetails = async (tripId: string) => {
+    try {
+      setDetailsLoading(true);
+      setSelectedTrip(trips.find(t => t.id === tripId) || null);
+
+      // Fetch transactions for this trip
+      const { data: transactions } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('created_at', { ascending: false });
+
+      // Fetch irregularities for this trip
+      const { data: irregularities } = await supabase
+        .from('fare_irregularities')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('detected_at', { ascending: false });
+
+      // Fetch emergency alerts for this trip
+      const { data: emergencyAlerts } = await supabase
+        .from('emergency_alerts')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('created_at', { ascending: false });
+
+      // Fetch anomaly detections for this trip
+      const { data: anomalies } = await supabase
+        .from('anomaly_detections')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('detected_at', { ascending: false });
+
+      setTripDetails({
+        transactions: transactions || [],
+        irregularities: irregularities || [],
+        emergencyAlerts: emergencyAlerts || [],
+        anomalies: anomalies || []
+      });
+    } catch (error) {
+      console.error('Error fetching trip details:', error);
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
@@ -234,7 +283,11 @@ export default function TripManagement() {
                 </thead>
                 <tbody>
                   {paginatedTrips.map((trip) => (
-                    <tr key={trip.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                    <tr 
+                      key={trip.id} 
+                      className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
+                      onClick={() => fetchTripDetails(trip.id)}
+                    >
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-2">
                           <Bus size={16} className="text-orange-400" />
@@ -271,7 +324,7 @@ export default function TripManagement() {
                       <td className="py-4 px-4">
                         {tripVideos[trip.id] ? (
                           <button
-                            onClick={() => setSelectedVideo(tripVideos[trip.id])}
+                            onClick={(e) => { e.stopPropagation(); setSelectedVideo(tripVideos[trip.id]); }}
                             className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors text-sm"
                           >
                             <Video size={14} />
@@ -426,6 +479,167 @@ export default function TripManagement() {
                     <Download size={18} />
                     Download Video
                   </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trip Details Modal */}
+      {selectedTrip && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-card rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Bus className="text-orange-400" size={20} />
+                Trip Details
+              </h2>
+              <button
+                onClick={() => { setSelectedTrip(null); setTripDetails(null); }}
+                className="text-white/60 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              {detailsLoading ? (
+                <div className="text-center py-8">
+                  <div className="text-white">Loading trip details...</div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Trip Info */}
+                  <div className="glass-card p-4 border border-white/10">
+                    <h3 className="text-lg font-bold text-white mb-3">Trip Information</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-white/60">Bus</p>
+                        <p className="text-white font-medium">{selectedTrip.buses?.bus_number || selectedTrip.buses?.plate_number || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-white/60">Route</p>
+                        <p className="text-white font-medium">{selectedTrip.buses?.route || 'Unknown'}</p>
+                      </div>
+                      <div>
+                        <p className="text-white/60">Conductor</p>
+                        <p className="text-white font-medium">{selectedTrip.conductor?.full_name || 'Unknown'}</p>
+                      </div>
+                      <div>
+                        <p className="text-white/60">Status</p>
+                        <p className="text-white font-medium">{statusLabels[selectedTrip.status as keyof typeof statusLabels] || selectedTrip.status}</p>
+                      </div>
+                      <div>
+                        <p className="text-white/60">Started</p>
+                        <p className="text-white font-medium">{new Date(selectedTrip.started_at).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-white/60">Ended</p>
+                        <p className="text-white font-medium">{selectedTrip.ended_at ? new Date(selectedTrip.ended_at).toLocaleString() : 'In Progress'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transactions */}
+                  <div className="glass-card p-4 border border-white/10">
+                    <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                      <Receipt className="text-green-400" size={18} />
+                      Transactions ({tripDetails.transactions.length})
+                    </h3>
+                    {tripDetails.transactions.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {tripDetails.transactions.map((tx: any) => (
+                          <div key={tx.id} className="bg-white/5 rounded-lg p-3 border border-white/10">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="text-white font-medium text-sm">{tx.transaction_type}</p>
+                                <p className="text-white/60 text-xs">₱{tx.amount || 0}</p>
+                              </div>
+                              <span className="text-white/60 text-xs">{new Date(tx.created_at).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-white/40 text-sm">No transactions for this trip</p>
+                    )}
+                  </div>
+
+                  {/* Irregularities */}
+                  <div className="glass-card p-4 border border-white/10">
+                    <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                      <AlertTriangle className="text-orange-400" size={18} />
+                      Fare Irregularities ({tripDetails.irregularities.length})
+                    </h3>
+                    {tripDetails.irregularities.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {tripDetails.irregularities.map((irr: any) => (
+                          <div key={irr.id} className="bg-orange-500/10 rounded-lg p-3 border border-orange-500/30">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="text-white font-medium text-sm">{irr.type}</p>
+                                <p className="text-white/80 text-xs">{irr.description || 'No description'}</p>
+                              </div>
+                              <span className="text-white/60 text-xs">{new Date(irr.detected_at).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-white/40 text-sm">No irregularities for this trip</p>
+                    )}
+                  </div>
+
+                  {/* Emergency Alerts */}
+                  <div className="glass-card p-4 border border-white/10">
+                    <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                      <Activity className="text-red-400" size={18} />
+                      Emergency Alerts ({tripDetails.emergencyAlerts.length})
+                    </h3>
+                    {tripDetails.emergencyAlerts.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {tripDetails.emergencyAlerts.map((alert: any) => (
+                          <div key={alert.id} className="bg-red-500/10 rounded-lg p-3 border border-red-500/30">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="text-white font-medium text-sm">{alert.alert_type || 'Emergency'}</p>
+                                <p className="text-white/80 text-xs">{alert.message || 'No message'}</p>
+                              </div>
+                              <span className="text-white/60 text-xs">{new Date(alert.created_at).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-white/40 text-sm">No emergency alerts for this trip</p>
+                    )}
+                  </div>
+
+                  {/* Anomalies */}
+                  <div className="glass-card p-4 border border-white/10">
+                    <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                      <Activity className="text-purple-400" size={18} />
+                      Anomaly Detections ({tripDetails.anomalies.length})
+                    </h3>
+                    {tripDetails.anomalies.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {tripDetails.anomalies.map((anomaly: any) => (
+                          <div key={anomaly.id} className="bg-purple-500/10 rounded-lg p-3 border border-purple-500/30">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="text-white font-medium text-sm">{anomaly.anomaly_type || 'Anomaly'}</p>
+                                <p className="text-white/80 text-xs">{anomaly.description || 'No description'}</p>
+                              </div>
+                              <span className="text-white/60 text-xs">{new Date(anomaly.detected_at).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-white/40 text-sm">No anomaly detections for this trip</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
