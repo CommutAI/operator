@@ -412,6 +412,15 @@ export default function Dashboard() {
         const lat = isValidGps ? gps.lat : 8.429; // Default to Cagayan de Oro
         const lng = isValidGps ? gps.lng : 124.762;
 
+        console.log('Bus marker:', {
+          id: trip.id,
+          plate: trip.buses?.bus_number || trip.buses?.plate_number,
+          lat,
+          lng,
+          isValidGps,
+          hasGps: !!gps
+        });
+
         return {
           id: trip.id,
           plate: trip.buses?.bus_number || trip.buses?.plate_number || 'Unknown',
