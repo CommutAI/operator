@@ -234,7 +234,7 @@ export default function Dashboard() {
         .select('amount')
         .limit(1000);
 
-      const fareCollectedToday = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
+      const totalFaresAllTime = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
 
       // Fetch fare irregularities without join first
       const { data: irregularities } = await supabase
@@ -330,7 +330,7 @@ export default function Dashboard() {
         activeTrips: trips?.length || 0,
         currentPassengers,
         totalPassengersAllTime: currentPassengers,
-        totalFaresAllTime: fareCollectedToday,
+        totalFaresAllTime: totalFaresAllTime,
         activeIrregularities: irregularities?.length || 0,
         busesOnline,
       });
@@ -989,8 +989,8 @@ export default function Dashboard() {
           </ResponsiveContainer>
           <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-white/60 text-sm">Today's Revenue</span>
-              <span className="text-white font-bold">₱{kpiData.fareCollectedToday.toLocaleString()}</span>
+              <span className="text-white/60 text-sm">Total Revenue</span>
+              <span className="text-white font-bold">₱{kpiData.totalFaresAllTime.toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-white/60 text-sm">7-Day Total</span>
