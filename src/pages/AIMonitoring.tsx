@@ -69,7 +69,7 @@ export default function AIMonitoring() {
 
     const passengerSubscription = supabase
       .channel('ai-passenger-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'passenger_counts' }, fetchStats)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'boarded_passengers' }, fetchStats)
       .subscribe();
 
     return () => {
@@ -86,9 +86,9 @@ export default function AIMonitoring() {
           .select('*', { count: 'exact', head: true })
           .eq('resolved', false),
         supabase
-          .from('passenger_counts')
-          .select('count, recorded_at, trip_id')
-          .order('recorded_at', { ascending: false })
+          .from('boarded_passengers')
+          .select('boarded_at, trip_id')
+          .order('boarded_at', { ascending: false })
           .limit(100),
         supabase
           .from('fare_irregularities')
@@ -99,7 +99,7 @@ export default function AIMonitoring() {
 
       setUnresolvedCount(irregularityCount || 0);
 
-      const total = (passengerData || []).reduce((sum: number, pc: any) => sum + (pc.count || 0), 0);
+      const total = (passengerData || []).length;
       setTotalPassengers(total);
 
       // Fetch trips and buses for passenger counts
@@ -169,7 +169,7 @@ export default function AIMonitoring() {
         history.push({
           id: `pc-${pc.id}`,
           bus: busNumber,
-          event: `Detected ${pc.count} passengers`,
+          event: `Passenger boarded`,
           time: minutesAgo < 1 ? 'Just now' : `${minutesAgo} min ago`,
           timeValue: minutesAgo,
           type: 'passenger',

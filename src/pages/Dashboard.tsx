@@ -220,13 +220,13 @@ export default function Dashboard() {
 
       setActiveTrips(tripsWithBuses);
 
-      // Fetch all passenger counts (all time)
-      const { data: passengerCounts } = await supabase
-        .from('passenger_counts')
-        .select('count, ai_count')
+      // Fetch all boarded passengers (all time)
+      const { data: boardedPassengers } = await supabase
+        .from('boarded_passengers')
+        .select('id')
         .limit(1000);
 
-      const currentPassengers = passengerCounts?.reduce((sum, pc) => sum + (pc.count || 0), 0) || 0;
+      const currentPassengers = boardedPassengers?.length || 0;
 
       // Fetch all transactions (all time)
       const { data: transactions } = await supabase
@@ -422,28 +422,25 @@ export default function Dashboard() {
         };
       });
 
-      // Fetch passenger counts for active trips
+      // Fetch boarded passengers for active trips
       const tripIds = (activeTrips || []).map((t: any) => t.id);
       let totalPassengers = 0;
-      
-      if (tripIds.length > 0) {
-        const { data: passengerCounts } = await (supabase
-          .from('passenger_counts')
-          .select('trip_id, count')
-          .in('trip_id', tripIds)
-          .order('recorded_at', { ascending: false }) as any);
 
-        const latestCounts: Record<string, number> = {};
-        (passengerCounts || []).forEach((pc: any) => {
-          if (!latestCounts[pc.trip_id]) {
-            latestCounts[pc.trip_id] = pc.count;
-          }
+      if (tripIds.length > 0) {
+        const { data: boardedPassengers } = await supabase
+          .from('boarded_passengers')
+          .select('trip_id')
+          .in('trip_id', tripIds);
+
+        const passengerCountsByTrip: Record<string, number> = {};
+        (boardedPassengers || []).forEach((bp: any) => {
+          passengerCountsByTrip[bp.trip_id] = (passengerCountsByTrip[bp.trip_id] || 0) + 1;
         });
 
         busMarkers.forEach((bus: any) => {
-          if (latestCounts[bus.tripId]) {
-            bus.passengers = latestCounts[bus.tripId];
-            totalPassengers += latestCounts[bus.tripId];
+          if (passengerCountsByTrip[bus.tripId]) {
+            bus.passengers = passengerCountsByTrip[bus.tripId];
+            totalPassengers += passengerCountsByTrip[bus.tripId];
           }
         });
       }
