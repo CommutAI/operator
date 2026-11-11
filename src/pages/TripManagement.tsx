@@ -100,6 +100,7 @@ export default function TripManagement() {
   };
 
   const fetchTripDetails = async (tripId: string) => {
+    console.log('Fetching trip details for:', tripId);
     try {
       setDetailsLoading(true);
       setSelectedTrip(trips.find(t => t.id === tripId) || null);
@@ -283,10 +284,13 @@ export default function TripManagement() {
                 </thead>
                 <tbody>
                   {paginatedTrips.map((trip) => (
-                    <tr 
-                      key={trip.id} 
+                    <tr
+                      key={trip.id}
                       className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
-                      onClick={() => fetchTripDetails(trip.id)}
+                      onClick={(e) => {
+                        console.log('Row clicked for trip:', trip.id);
+                        fetchTripDetails(trip.id);
+                      }}
                     >
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-2">
