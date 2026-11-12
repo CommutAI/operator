@@ -212,11 +212,14 @@ const LiveMap = () => {
           Math.abs(b.lng - latestGpsAny.lng) < 0.0001
         );
         
+        // Try to resolve bus_id from allBuses using bus_number 1 (the Pi's bus)
+        const pisBus = (allBuses || []).find((b: any) => b.bus_number === 1);
+
         // Only add GPS pin if not already displayed by a trip marker
         if (!alreadyDisplayed) {
           gpsPins.push({
             id: 'gps-live',
-            plate: '🚍 Live GPS Location',
+            plate: pisBus ? `Bus ${pisBus.bus_number}` : '🚍 Live GPS Location',
             route: latestGpsAny.tripId ? `Trip: ${latestGpsAny.tripId.slice(0, 8)}...` : 'Current GPS Position',
             lat: latestGpsAny.lat,
             lng: latestGpsAny.lng,
@@ -224,7 +227,7 @@ const LiveMap = () => {
             status: 'active',
             locationSource: `${latestGpsAny.source} (live)`,
             locationUpdatedAt: latestGpsAny.recordedAt,
-            busId: null,
+            busId: pisBus?.id ?? null,
             tripId: latestGpsAny.tripId
           });
           
@@ -252,48 +255,41 @@ const LiveMap = () => {
           busId: bus.id
         }));
 
-      // Fetch passenger counts for active trips
-      const tripIds = (activeTrips || []).map((t: any) => t.id);
+      // Fetch the latest passenger count per bus_id from passenger_counts
+      // This covers both active trips and GPS-only pins (no trip_id)
+      const allBusIds = [
+        ...(activeTrips || []).map((t: any) => t.bus_id),
+        ...gpsPins.map((p: any) => p.busId)
+      ].filter(Boolean);
+
       let totalPassengers = 0;
+      const latestCountPerBus: Record<string, number> = {};
 
-      // Also fetch the latest passenger count overall (for GPS pins with no trip_id)
-      const { data: latestCountAny } = await (supabase
-        .from('passenger_counts')
-        .select('trip_id, count')
-        .order('recorded_at', { ascending: false })
-        .limit(1) as any);
-      const latestPassengerCount = latestCountAny?.[0]?.count ?? 0;
-
-      if (tripIds.length > 0) {
+      if (allBusIds.length > 0) {
         const { data: passengerCounts } = await (supabase
           .from('passenger_counts')
-          .select('trip_id, count')
-          .in('trip_id', tripIds)
+          .select('bus_id, trip_id, count, recorded_at')
+          .in('bus_id', allBusIds)
           .order('recorded_at', { ascending: false }) as any);
 
-        // Group by trip_id, keep only the latest per trip
-        const latestCounts: Record<string, number> = {};
+        // Keep only the latest count per bus_id
         (passengerCounts || []).forEach((pc: any) => {
-          if (!latestCounts[pc.trip_id]) {
-            latestCounts[pc.trip_id] = pc.count;
+          if (pc.bus_id && latestCountPerBus[pc.bus_id] === undefined) {
+            latestCountPerBus[pc.bus_id] = pc.count ?? 0;
           }
-        });
-
-        busMarkers.forEach((bus: any) => {
-          const count = latestCounts[bus.tripId] ?? 0;
-          bus.passengers = count;
-          totalPassengers += count;
         });
       }
 
-      // Apply latest passenger count to GPS pins that have no trip
+      // Apply counts to bus markers (matched by busId)
+      busMarkers.forEach((bus: any) => {
+        const count = latestCountPerBus[bus.busId] ?? 0;
+        bus.passengers = count;
+        totalPassengers += count;
+      });
+
+      // Apply counts to GPS pins (matched by busId if available)
       gpsPins.forEach((pin: any) => {
-        if (!pin.tripId) {
-          pin.passengers = latestPassengerCount;
-        } else {
-          // If the GPS pin is linked to a trip, it will already be handled above
-          pin.passengers = latestPassengerCount;
-        }
+        pin.passengers = pin.busId ? (latestCountPerBus[pin.busId] ?? 0) : 0;
       });
 
       console.log('[LiveMap] Bus markers:', busMarkers.map((b: any) => ({ plate: b.plate, lat: b.lat, lng: b.lng, source: b.locationSource })));
