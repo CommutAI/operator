@@ -139,29 +139,36 @@ const LiveMap = () => {
         .from('buses')
         .select('*');
 
-      const { data: gpsRows } = await (supabase
+      const { data: gpsRows, error: gpsError } = await (supabase
         .from('gps_locations')
         .select('trip_id, latitude, longitude, source, recorded_at')
         .order('recorded_at', { ascending: false })
         .limit(100) as any);
 
+      console.log('[LiveMap] GPS rows fetched:', gpsRows?.length, gpsError);
+      console.log('[LiveMap] Latest GPS row:', gpsRows?.[0]);
+
       const latestGpsByTripId: Record<string, any> = {};
       let latestGpsAny: any = null;
       (gpsRows || []).forEach((row: any) => {
+        const lat = parseFloat(row.latitude);
+        const lng = parseFloat(row.longitude);
         const gps = {
-          lat: parseFloat(row.latitude),
-          lng: parseFloat(row.longitude),
+          lat,
+          lng,
           source: row.source || 'gps',
           recordedAt: row.recorded_at,
           tripId: row.trip_id || null
         };
 
-        if (!Number.isFinite(gps.lat) || !Number.isFinite(gps.lng)) return;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
         if (!latestGpsAny) latestGpsAny = gps;
         if (row.trip_id && !latestGpsByTripId[row.trip_id]) {
           latestGpsByTripId[row.trip_id] = gps;
         }
       });
+
+      console.log('[LiveMap] latestGpsAny:', latestGpsAny);
 
       // Transform trips to bus markers
       const busMarkers = (activeTrips || []).map((trip: any, index: number) => {
@@ -243,6 +250,9 @@ const LiveMap = () => {
           }
         });
       }
+
+      console.log('[LiveMap] Bus markers:', busMarkers.map((b: any) => ({ plate: b.plate, lat: b.lat, lng: b.lng, source: b.locationSource })));
+      console.log('[LiveMap] GPS pins:', gpsPins.map((b: any) => ({ lat: b.lat, lng: b.lng })));
 
       setBuses([...busMarkers, ...gpsPins, ...inactiveBuses] as any);
       setLatestGps(latestGpsAny);
