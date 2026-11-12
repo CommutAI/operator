@@ -27,3 +27,6 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Separate sys-admin project (not part of this repo)
+Usersjoshusys-admin/
