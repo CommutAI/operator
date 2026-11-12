@@ -314,8 +314,6 @@ const LiveMap = () => {
       // Apply counts to GPS pins via bus_id
       gpsPins.forEach((pin: any) => {
         pin.passengers = latestCountPerBus[pin.busId] ?? 0;
-      });        bus.passengers = count;
-        totalPassengers += count;
       });
 
       console.log('[LiveMap] Bus markers:', busMarkers.map((b: any) => ({ plate: b.plate, lat: b.lat, lng: b.lng, source: b.locationSource })));
