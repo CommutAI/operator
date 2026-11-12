@@ -183,13 +183,13 @@ const LiveMap = () => {
         };
       });
 
-      // If there are no active trips but we have GPS data, show a standalone GPS pin
-      const orphanGpsPins: any[] = [];
-      if (busMarkers.length === 0 && latestGpsAny) {
-        orphanGpsPins.push({
-          id: 'gps-orphan',
-          plate: 'Bus (GPS)',
-          route: 'No active trip',
+      // Always show a GPS pin for the latest GPS reading, regardless of trip linkage
+      const gpsPins: any[] = [];
+      if (latestGpsAny) {
+        gpsPins.push({
+          id: 'gps-live',
+          plate: 'Bus (Live GPS)',
+          route: latestGpsAny.tripId ? `Trip: ${latestGpsAny.tripId.slice(0, 8)}…` : 'No active trip',
           lat: latestGpsAny.lat,
           lng: latestGpsAny.lng,
           passengers: 0,
@@ -197,7 +197,7 @@ const LiveMap = () => {
           locationSource: latestGpsAny.source,
           locationUpdatedAt: latestGpsAny.recordedAt,
           busId: null,
-          tripId: null
+          tripId: latestGpsAny.tripId
         });
       }
 
@@ -244,7 +244,7 @@ const LiveMap = () => {
         });
       }
 
-      setBuses([...busMarkers, ...orphanGpsPins, ...inactiveBuses] as any);
+      setBuses([...busMarkers, ...gpsPins, ...inactiveBuses] as any);
       setLatestGps(latestGpsAny);
 
       // Calculate stats
