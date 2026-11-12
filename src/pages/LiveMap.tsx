@@ -190,9 +190,11 @@ const LiveMap = () => {
         };
       });
 
-      // Always show a GPS pin for the latest GPS reading, regardless of trip linkage
+      // Always show a GPS pin for the latest GPS reading, regardless of trip linkage.
+      // Skip if an active trip marker is already using this GPS reading to avoid duplicates.
       const gpsPins: any[] = [];
-      if (latestGpsAny) {
+      const tripMarkersHaveRealGps = busMarkers.some((b: any) => b.locationSource !== 'fallback');
+      if (latestGpsAny && !tripMarkersHaveRealGps) {
         gpsPins.push({
           id: 'gps-live',
           plate: 'Bus (Live GPS)',

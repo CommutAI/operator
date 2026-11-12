@@ -399,12 +399,11 @@ export default function Dashboard() {
 
       // Transform trips to bus markers
       const busMarkers = (tripsWithBuses || []).map((trip: any, index: number) => {
-        const gps = latestGpsByTripId[trip.id] || (index === 0 ? latestGpsAny : null);
+        const gps = latestGpsByTripId[trip.id] || latestGpsAny;
 
-        // Use GPS if valid, otherwise use default coordinates
-        // Invalid GPS is lat=0, lng=0 or trip_id=null
-        const isValidGps = gps && gps.lat !== 0 && gps.lng !== 0 && gps.tripId === trip.id;
-        const lat = isValidGps ? gps.lat : 8.429; // Default to Cagayan de Oro
+        // Accept any GPS row — Pi sends GPS without trip_id when no trip is active
+        const isValidGps = gps && Number.isFinite(gps.lat) && Number.isFinite(gps.lng) && gps.lat !== 0 && gps.lng !== 0;
+        const lat = isValidGps ? gps.lat : 8.429;
         const lng = isValidGps ? gps.lng : 124.762;
 
         return {
