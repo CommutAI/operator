@@ -91,6 +91,7 @@ const LiveMap = () => {
   const [buses, setBuses] = useState<any[]>([]);
   const [routes, setRoutes] = useState<any[]>([]);
   const [routeCoordinates, setRouteCoordinates] = useState<Record<string, [number, number][]>>({});
+  const [latestGps, setLatestGps] = useState<any>(null);
   const [stats, setStats] = useState({
     totalPassengers: 0,
     activeBuses: 0,
@@ -164,7 +165,8 @@ const LiveMap = () => {
 
       // Transform trips to bus markers
       const busMarkers = (activeTrips || []).map((trip: any, index: number) => {
-        const gps = latestGpsByTripId[trip.id] || (index === 0 ? latestGpsAny : null);
+        // Prefer GPS matched to this trip, then fall back to any latest GPS
+        const gps = latestGpsByTripId[trip.id] || latestGpsAny;
 
         return {
           id: trip.id,
@@ -172,7 +174,7 @@ const LiveMap = () => {
           route: trip.buses?.route || 'Unknown',
           lat: gps?.lat ?? trip.current_lat ?? 8.429,
           lng: gps?.lng ?? trip.current_lng ?? 124.762,
-          passengers: 0, // Will be fetched from passenger_counts
+          passengers: 0,
           status: 'active',
           locationSource: gps ? (gps.tripId ? gps.source : `${gps.source} (latest GPS)`) : 'fallback',
           locationUpdatedAt: gps?.recordedAt || trip.gps_updated_at || null,
@@ -181,26 +183,39 @@ const LiveMap = () => {
         };
       });
 
-      // Add inactive buses
-      const usedLatestGps = busMarkers.some((bus: any) => bus.locationUpdatedAt === latestGpsAny?.recordedAt);
+      // If there are no active trips but we have GPS data, show a standalone GPS pin
+      const orphanGpsPins: any[] = [];
+      if (busMarkers.length === 0 && latestGpsAny) {
+        orphanGpsPins.push({
+          id: 'gps-orphan',
+          plate: 'Bus (GPS)',
+          route: 'No active trip',
+          lat: latestGpsAny.lat,
+          lng: latestGpsAny.lng,
+          passengers: 0,
+          status: 'active',
+          locationSource: latestGpsAny.source,
+          locationUpdatedAt: latestGpsAny.recordedAt,
+          busId: null,
+          tripId: null
+        });
+      }
+
+      // Add inactive buses (don't assign GPS to them — GPS belongs to active trips/orphan pin)
       const inactiveBuses = (allBuses || [])
         .filter((bus: any) => bus.status !== 'active' || !activeTrips?.some((t: any) => t.bus_id === bus.id))
-        .map((bus: any, index: number) => {
-          const gps = !usedLatestGps && index === 0 ? latestGpsAny : null;
-
-          return {
-            id: bus.id,
-            plate: bus.plate_number,
-            route: bus.route,
-            lat: gps?.lat ?? 8.429,
-            lng: gps?.lng ?? 124.762,
-            passengers: 0,
-            status: bus.status === 'maintenance' ? 'maintenance' : 'idle',
-            locationSource: gps ? `${gps.source} (latest GPS)` : 'fallback',
-            locationUpdatedAt: gps?.recordedAt || null,
-            busId: bus.id
-          };
-        });
+        .map((bus: any) => ({
+          id: bus.id,
+          plate: bus.plate_number,
+          route: bus.route,
+          lat: 8.429,
+          lng: 124.762,
+          passengers: 0,
+          status: bus.status === 'maintenance' ? 'maintenance' : 'idle',
+          locationSource: 'fallback',
+          locationUpdatedAt: null,
+          busId: bus.id
+        }));
 
       // Fetch passenger counts for active trips
       const tripIds = (activeTrips || []).map((t: any) => t.id);
@@ -229,7 +244,8 @@ const LiveMap = () => {
         });
       }
 
-      setBuses([...busMarkers, ...inactiveBuses] as any);
+      setBuses([...busMarkers, ...orphanGpsPins, ...inactiveBuses] as any);
+      setLatestGps(latestGpsAny);
 
       // Calculate stats
       const uniqueRoutes = [...new Set((allBuses || []).map((b: any) => b.route))];
@@ -342,9 +358,11 @@ const LiveMap = () => {
     );
   }
 
-  const center: [number, number] = buses.length > 0 && buses[0].lat
+  const center: [number, number] = latestGps
+    ? [latestGps.lat, latestGps.lng]
+    : buses.length > 0 && Number.isFinite(buses[0].lat) && buses[0].locationSource !== 'fallback'
     ? [buses[0].lat, buses[0].lng]
-    : [8.429, 124.762]; // Manolo Fortich - Agora route center
+    : [8.429, 124.762];
 
   return (
     <div className="space-y-6">
