@@ -255,7 +255,15 @@ const LiveMap = () => {
       // Fetch passenger counts for active trips
       const tripIds = (activeTrips || []).map((t: any) => t.id);
       let totalPassengers = 0;
-      
+
+      // Also fetch the latest passenger count overall (for GPS pins with no trip_id)
+      const { data: latestCountAny } = await (supabase
+        .from('passenger_counts')
+        .select('trip_id, count')
+        .order('recorded_at', { ascending: false })
+        .limit(1) as any);
+      const latestPassengerCount = latestCountAny?.[0]?.count ?? 0;
+
       if (tripIds.length > 0) {
         const { data: passengerCounts } = await (supabase
           .from('passenger_counts')
@@ -263,7 +271,7 @@ const LiveMap = () => {
           .in('trip_id', tripIds)
           .order('recorded_at', { ascending: false }) as any);
 
-        // Group by trip_id and get latest count
+        // Group by trip_id, keep only the latest per trip
         const latestCounts: Record<string, number> = {};
         (passengerCounts || []).forEach((pc: any) => {
           if (!latestCounts[pc.trip_id]) {
@@ -272,12 +280,21 @@ const LiveMap = () => {
         });
 
         busMarkers.forEach((bus: any) => {
-          if (latestCounts[bus.tripId]) {
-            bus.passengers = latestCounts[bus.tripId];
-            totalPassengers += latestCounts[bus.tripId];
-          }
+          const count = latestCounts[bus.tripId] ?? 0;
+          bus.passengers = count;
+          totalPassengers += count;
         });
       }
+
+      // Apply latest passenger count to GPS pins that have no trip
+      gpsPins.forEach((pin: any) => {
+        if (!pin.tripId) {
+          pin.passengers = latestPassengerCount;
+        } else {
+          // If the GPS pin is linked to a trip, it will already be handled above
+          pin.passengers = latestPassengerCount;
+        }
+      });
 
       console.log('[LiveMap] Bus markers:', busMarkers.map((b: any) => ({ plate: b.plate, lat: b.lat, lng: b.lng, source: b.locationSource })));
       console.log('[LiveMap] GPS pins:', gpsPins.map((b: any) => ({ lat: b.lat, lng: b.lng })));
@@ -378,12 +395,10 @@ const LiveMap = () => {
                 Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
               </p>
             )}
-            {bus.passengers > 0 && (
-              <div className="flex items-center gap-2 mt-2">
-                <Users size={16} className="text-orange-500" />
-                <span className="text-sm">{bus.passengers} passengers</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2 mt-2">
+              <Users size={16} className="text-orange-500" />
+              <span className="text-sm font-medium">{bus.passengers} passenger{bus.passengers !== 1 ? 's' : ''}</span>
+            </div>
             <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
               {bus.status}
             </span>
@@ -539,12 +554,10 @@ const LiveMap = () => {
                       </div>
                       <span className={`w-2 h-2 rounded-full ${bus.status === 'active' ? 'bg-green-400' : 'bg-gray-400'}`} />
                     </div>
-                    {bus.passengers > 0 && (
-                      <div className="flex items-center gap-2 text-white/70 text-xs">
+                    <div className="flex items-center gap-2 text-white/70 text-xs">
                         <Users size={14} />
-                        <span>{bus.passengers} passengers</span>
+                        <span>{bus.passengers} passenger{bus.passengers !== 1 ? 's' : ''}</span>
                       </div>
-                    )}
                     {bus.locationSource && (
                       <div className="text-white/50 text-xs mt-1">
                         📍 {bus.locationSource}
