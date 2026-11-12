@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Data Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .card {
+            background: #2a2a2a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #3a3a3a;
+        }
+        h1 {
+            color: #4ade80;
+        }
+        h2 {
+            color: #60a5fa;
+            font-size: 18px;
+        }
+        pre {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid #3a3a3a;
+        }
+        .success { color: #4ade80; }
+        .error { color: #ef4444; }
+        .warning { color: #fbbf24; }
+        button {
+            background: #4ade80;
+            color: #1a1a1a;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #22c55e;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .status.active {
+            background: #22c55e;
+            color: white;
+        }
+        .status.inactive {
+            background: #6b7280;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>🛰️ GPS Data Fetch Test</h1>
+    
+    <div class="card">
+        <h2>Instructions</h2>
+        <ol>
+            <li>Make sure your Supabase URL and Anon Key are set below</li>
+            <li>Click "Fetch GPS Data" to retrieve from database</li>
+            <li>Check if coordinates match: <code>8.41245600, 124.81650700</code></li>
+        </ol>
+    </div>
+
+    <div class="card">
+        <h2>Supabase Configuration</h2>
+        <div style="margin-bottom: 10px;">
+            <label>Supabase URL:</label><br>
+            <input type="text" id="supabaseUrl" placeholder="https://your-project.supabase.co" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #3a3a3a;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label>Supabase Anon Key:</label><br>
+            <input type="password" id="supabaseKey" placeholder="Your anon key" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #3a3a3a;">
+        </div>
+        <button onclick="fetchGPSData()">Fetch GPS Data</button>
+        <button onclick="loadFromEnv()">Load from .env (if running locally)</button>
+    </div>
+
+    <div class="card" id="results" style="display: none;">
+        <h2>Results</h2>
+        <div id="resultContent"></div>
+    </div>
+
+    <script>
+        // Try to load from localStorage
+        window.onload = function() {
+            const savedUrl = localStorage.getItem('supabaseUrl');
+            const savedKey = localStorage.getItem('supabaseKey');
+            if (savedUrl) document.getElementById('supabaseUrl').value = savedUrl;
+            if (savedKey) document.getElementById('supabaseKey').value = savedKey;
+        };
+
+        async function fetchGPSData() {
+            const supabaseUrl = document.getElementById('supabaseUrl').value.trim();
+            const supabaseKey = document.getElementById('supabaseKey').value.trim();
+            
+            if (!supabaseUrl || !supabaseKey) {
+                alert('Please enter both Supabase URL and Anon Key');
+                return;
+            }
+
+            // Save to localStorage
+            localStorage.setItem('supabaseUrl', supabaseUrl);
+            localStorage.setItem('supabaseKey', supabaseKey);
+
+            const resultsDiv = document.getElementById('results');
+            const contentDiv = document.getElementById('resultContent');
+            
+            resultsDiv.style.display = 'block';
+            contentDiv.innerHTML = '<p class="warning">⏳ Fetching GPS data...</p>';
+
+            try {
+                const response = await fetch(`${supabaseUrl}/rest/v1/gps_locations?order=recorded_at.desc&limit=10`, {
+                    headers: {
+                        'apikey': supabaseKey,
+                        'Authorization': `Bearer ${supabaseKey}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    contentDiv.innerHTML = `
+                        <p class="warning">⚠️ No GPS data found in database</p>
+                        <p>The table exists but contains no records.</p>
+                    `;
+                    return;
+                }
+
+                const latest = data[0];
+                const expectedLat = 8.41245600;
+                const expectedLng = 124.81650700;
+                const latMatch = Math.abs(parseFloat(latest.latitude) - expectedLat) < 0.0001;
+                const lngMatch = Math.abs(parseFloat(latest.longitude) - expectedLng) < 0.0001;
+
+                contentDiv.innerHTML = `
+                    <p class="success">✅ Successfully fetched ${data.length} GPS records</p>
+                    
+                    <h3 style="margin-top: 20px; color: #60a5fa;">Latest GPS Location:</h3>
+                    <ul style="line-height: 1.8;">
+                        <li><strong>Latitude:</strong> ${latest.latitude} ${latMatch ? '<span class="success">✓</span>' : '<span class="warning">⚠️ Different from expected</span>'}</li>
+                        <li><strong>Longitude:</strong> ${latest.longitude} ${lngMatch ? '<span class="success">✓</span>' : '<span class="warning">⚠️ Different from expected</span>'}</li>
+                        <li><strong>Altitude:</strong> ${latest.altitude || 'N/A'}</li>
+                        <li><strong>Speed:</strong> ${latest.speed || 'N/A'}</li>
+                        <li><strong>Accuracy:</strong> ${latest.accuracy || 'N/A'}</li>
+                        <li><strong>Source:</strong> ${latest.source}</li>
+                        <li><strong>Trip ID:</strong> ${latest.trip_id || 'None (standalone GPS)'}</li>
+                        <li><strong>Satellites:</strong> ${latest.satellite_count || 'N/A'}</li>
+                        <li><strong>Recorded At:</strong> ${new Date(latest.recorded_at).toLocaleString()}</li>
+                    </ul>
+
+                    ${!latMatch || !lngMatch ? `
+                        <div style="background: #fbbf24; color: #1a1a1a; padding: 10px; border-radius: 6px; margin-top: 15px;">
+                            <strong>⚠️ Note:</strong> Coordinates don't match the expected test data.<br>
+                            Expected: ${expectedLat}, ${expectedLng}
+                        </div>
+                    ` : ''}
+
+                    <h3 style="margin-top: 20px; color: #60a5fa;">All GPS Records (Last 10):</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+
+                    <div style="margin-top: 20px;">
+                        <a href="https://www.google.com/maps?q=${latest.latitude},${latest.longitude}" target="_blank" 
+                           style="background: #3b82f6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                            📍 View on Google Maps
+                        </a>
+                    </div>
+                `;
+
+            } catch (error) {
+                contentDiv.innerHTML = `
+                    <p class="error">❌ Error fetching GPS data</p>
+                    <pre>${error.message}</pre>
+                    <p style="margin-top: 15px;">Possible issues:</p>
+                    <ul>
+                        <li>Incorrect Supabase URL or Anon Key</li>
+                        <li>Table doesn't exist or RLS policy blocking access</li>
+                        <li>Network connectivity issue</li>
+                    </ul>
+                `;
+            }
+        }
+
+        function loadFromEnv() {
+            alert('This feature requires running the app with the .env file loaded.\n\nFor now, please manually copy your Supabase URL and Anon Key from .env file.');
+        }
+    </script>
+</body>
+</html>

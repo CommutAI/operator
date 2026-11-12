@@ -13,6 +13,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
+// Custom GPS marker icon (bright green with pulse)
+const gpsIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+  className: 'pulse-dot'
+});
+
 // Hide Leaflet attribution and add custom animation
 if (!document.getElementById('leaflet-map-styles')) {
   const style = document.createElement('style');
@@ -190,24 +201,39 @@ const LiveMap = () => {
         };
       });
 
-      // Always show a GPS pin for the latest GPS reading, regardless of trip linkage.
-      // Skip if an active trip marker is already using this GPS reading to avoid duplicates.
+      // ALWAYS show a GPS pin if we have GPS data in the database
+      // This ensures GPS location is displayed even without active trips
       const gpsPins: any[] = [];
-      const tripMarkersHaveRealGps = busMarkers.some((b: any) => b.locationSource !== 'fallback');
-      if (latestGpsAny && !tripMarkersHaveRealGps) {
-        gpsPins.push({
-          id: 'gps-live',
-          plate: 'Bus (Live GPS)',
-          route: latestGpsAny.tripId ? `Trip: ${latestGpsAny.tripId.slice(0, 8)}…` : 'No active trip',
-          lat: latestGpsAny.lat,
-          lng: latestGpsAny.lng,
-          passengers: 0,
-          status: 'active',
-          locationSource: latestGpsAny.source,
-          locationUpdatedAt: latestGpsAny.recordedAt,
-          busId: null,
-          tripId: latestGpsAny.tripId
-        });
+      
+      if (latestGpsAny) {
+        // Check if any trip marker is already using this exact GPS location
+        const alreadyDisplayed = busMarkers.some((b: any) => 
+          Math.abs(b.lat - latestGpsAny.lat) < 0.0001 && 
+          Math.abs(b.lng - latestGpsAny.lng) < 0.0001
+        );
+        
+        // Only add GPS pin if not already displayed by a trip marker
+        if (!alreadyDisplayed) {
+          gpsPins.push({
+            id: 'gps-live',
+            plate: '🚍 Live GPS Location',
+            route: latestGpsAny.tripId ? `Trip: ${latestGpsAny.tripId.slice(0, 8)}...` : 'Current GPS Position',
+            lat: latestGpsAny.lat,
+            lng: latestGpsAny.lng,
+            passengers: 0,
+            status: 'active',
+            locationSource: `${latestGpsAny.source} (live)`,
+            locationUpdatedAt: latestGpsAny.recordedAt,
+            busId: null,
+            tripId: latestGpsAny.tripId
+          });
+          
+          console.log('[LiveMap] Added GPS pin at:', latestGpsAny.lat, latestGpsAny.lng);
+        } else {
+          console.log('[LiveMap] GPS location already displayed by trip marker');
+        }
+      } else {
+        console.log('[LiveMap] No GPS data available in database');
       }
 
       // Add inactive buses (don't assign GPS to them — GPS belongs to active trips/orphan pin)
@@ -330,34 +356,42 @@ const LiveMap = () => {
     }
   };
 
-  const BusMarker = ({ bus }: { bus: any }) => (
-    <Marker position={[bus.lat, bus.lng]}>
-      <Popup>
-        <div className="p-2">
-          <h3 className="font-bold text-gray-800">{bus.plate}</h3>
-          <p className="text-sm text-gray-600">{bus.route}</p>
-          <p className="text-xs text-gray-700 mt-2">
-            {Number(bus.lat).toFixed(6)}, {Number(bus.lng).toFixed(6)}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Source: {bus.locationSource || 'fallback'}
-          </p>
-          {bus.locationUpdatedAt && (
-            <p className="text-xs text-gray-500">
-              Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
+  const BusMarker = ({ bus }: { bus: any }) => {
+    // Use green pulsing icon for live GPS markers
+    const isGpsMarker = bus.id === 'gps-live';
+    const markerIcon = isGpsMarker ? gpsIcon : undefined;
+    
+    return (
+      <Marker position={[bus.lat, bus.lng]} icon={markerIcon}>
+        <Popup>
+          <div className="p-2">
+            <h3 className="font-bold text-gray-800">{bus.plate}</h3>
+            <p className="text-sm text-gray-600">{bus.route}</p>
+            <p className="text-xs text-gray-700 mt-2">
+              {Number(bus.lat).toFixed(6)}, {Number(bus.lng).toFixed(6)}
             </p>
-          )}
-          <div className="flex items-center gap-2 mt-2">
-            <Users size={16} className="text-orange-500" />
-            <span className="text-sm">{bus.passengers} passengers</span>
+            <p className="text-xs text-gray-500 mt-1">
+              Source: {bus.locationSource || 'fallback'}
+            </p>
+            {bus.locationUpdatedAt && (
+              <p className="text-xs text-gray-500">
+                Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
+              </p>
+            )}
+            {bus.passengers > 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <Users size={16} className="text-orange-500" />
+                <span className="text-sm">{bus.passengers} passengers</span>
+              </div>
+            )}
+            <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+              {bus.status}
+            </span>
           </div>
-          <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-            {bus.status}
-          </span>
-        </div>
-      </Popup>
-    </Marker>
-  );
+        </Popup>
+      </Marker>
+    );
+  };
 
   if (loading) {
     return (
@@ -370,17 +404,27 @@ const LiveMap = () => {
     );
   }
 
+  // Center map on GPS data if available, otherwise use first bus or default
   const center: [number, number] = latestGps
     ? [latestGps.lat, latestGps.lng]
-    : buses.length > 0 && Number.isFinite(buses[0].lat) && buses[0].locationSource !== 'fallback'
+    : buses.length > 0 && Number.isFinite(buses[0].lat)
     ? [buses[0].lat, buses[0].lng]
     : [8.429, 124.762];
+
+  console.log('[LiveMap] Map center:', center, 'latestGps:', latestGps);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-white text-3xl font-bold mb-2">Live Map</h1>
         <p className="text-white/60">Real-time GPS tracking of all buses</p>
+        {latestGps && (
+          <p className="text-white/40 text-sm mt-1">
+            Last GPS update: {new Date(latestGps.recordedAt).toLocaleString()} 
+            {' • '} 
+            Coordinates: {latestGps.lat.toFixed(6)}, {latestGps.lng.toFixed(6)}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -449,6 +493,36 @@ const LiveMap = () => {
         </div>
 
         <div className="space-y-4">
+          {/* GPS Status Card */}
+          {latestGps && (
+            <div className="glass-card p-6 bg-gradient-to-br from-green-500/10 to-green-600/5 border border-green-500/20">
+              <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+                Live GPS Active
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-white/60">Latitude:</span>
+                  <span className="text-white font-mono">{latestGps.lat.toFixed(6)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">Longitude:</span>
+                  <span className="text-white font-mono">{latestGps.lng.toFixed(6)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">Source:</span>
+                  <span className="text-white">{latestGps.source}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">Last Update:</span>
+                  <span className="text-white text-xs">
+                    {new Date(latestGps.recordedAt).toLocaleTimeString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="glass-card p-6">
             <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
               <Bus className="text-orange-400" />
@@ -457,7 +531,7 @@ const LiveMap = () => {
             <div className="space-y-3">
               {buses.length > 0 ? (
                 buses.map((bus: any) => (
-                  <div key={bus.id} className="bg-white/5 p-3 rounded-xl">
+                  <div key={bus.id} className={`bg-white/5 p-3 rounded-xl ${bus.id === 'gps-live' ? 'border-2 border-green-400/50' : ''}`}>
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className="text-white font-medium text-sm">{bus.plate}</p>
@@ -465,10 +539,17 @@ const LiveMap = () => {
                       </div>
                       <span className={`w-2 h-2 rounded-full ${bus.status === 'active' ? 'bg-green-400' : 'bg-gray-400'}`} />
                     </div>
-                    <div className="flex items-center gap-2 text-white/70 text-xs">
-                      <Users size={14} />
-                      <span>{bus.passengers} passengers</span>
-                    </div>
+                    {bus.passengers > 0 && (
+                      <div className="flex items-center gap-2 text-white/70 text-xs">
+                        <Users size={14} />
+                        <span>{bus.passengers} passengers</span>
+                      </div>
+                    )}
+                    {bus.locationSource && (
+                      <div className="text-white/50 text-xs mt-1">
+                        📍 {bus.locationSource}
+                      </div>
+                    )}
                   </div>
                 ))
               ) : (
