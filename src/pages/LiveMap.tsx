@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import { Bus, Navigation, Users, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useBackendVideo } from '../hooks/useBackendVideo';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -110,6 +111,9 @@ const LiveMap = () => {
     maintenanceBuses: 0
   });
   const [loading, setLoading] = useState(true);
+
+  // Get live passenger count directly from Pi WebSocket (same source as Video Monitoring)
+  const { passengerCount: livePassengerCount } = useBackendVideo({ autoConnect: true });
 
   useEffect(() => {
     fetchLiveMapData();
@@ -395,7 +399,9 @@ const LiveMap = () => {
     // Use green pulsing icon for live GPS markers
     const isGpsMarker = bus.id === 'gps-live';
     const markerIcon = isGpsMarker ? gpsIcon : undefined;
-    
+    // For active buses/GPS pins, use the live WebSocket count (same as Video Monitoring)
+    const displayCount = bus.status === 'active' ? livePassengerCount : bus.passengers;
+
     return (
       <Marker position={[bus.lat, bus.lng]} icon={markerIcon}>
         <Popup>
@@ -415,7 +421,7 @@ const LiveMap = () => {
             )}
             <div className="flex items-center gap-2 mt-2">
               <Users size={16} className="text-orange-500" />
-              <span className="text-sm font-medium">{bus.passengers} passenger{bus.passengers !== 1 ? 's' : ''}</span>
+              <span className="text-sm font-medium">{displayCount} passenger{displayCount !== 1 ? 's' : ''}</span>
             </div>
             <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
               {bus.status}
@@ -463,7 +469,7 @@ const LiveMap = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <SummaryCard 
           title="Total Passengers" 
-          value={stats.totalPassengers} 
+          value={livePassengerCount} 
           icon={Users} 
           color="bg-blue-500" 
         />
@@ -574,7 +580,7 @@ const LiveMap = () => {
                     </div>
                     <div className="flex items-center gap-2 text-white/70 text-xs">
                         <Users size={14} />
-                        <span>{bus.passengers} passenger{bus.passengers !== 1 ? 's' : ''}</span>
+                        <span>{bus.status === 'active' ? livePassengerCount : bus.passengers} passenger{(bus.status === 'active' ? livePassengerCount : bus.passengers) !== 1 ? 's' : ''}</span>
                       </div>
                     {bus.locationSource && (
                       <div className="text-white/50 text-xs mt-1">
