@@ -255,41 +255,63 @@ const LiveMap = () => {
           busId: bus.id
         }));
 
-      // Fetch the latest passenger count per bus_id from passenger_counts
-      // This covers both active trips and GPS-only pins (no trip_id)
+      // Fetch the latest passenger count per trip from passenger_counts
+      // Use ai_count (set by Pi's YOLOv8n) if available, else fall back to count
+      const tripIds = (activeTrips || []).map((t: any) => t.id).filter(Boolean);
+      let totalPassengers = 0;
+      const latestCountPerTrip: Record<string, number> = {};
+
+      if (tripIds.length > 0) {
+        const { data: passengerCounts } = await (supabase
+          .from('passenger_counts')
+          .select('trip_id, count, ai_count, recorded_at')
+          .in('trip_id', tripIds)
+          .order('recorded_at', { ascending: false }) as any);
+
+        // Keep only the latest count per trip_id
+        (passengerCounts || []).forEach((pc: any) => {
+          if (pc.trip_id && latestCountPerTrip[pc.trip_id] === undefined) {
+            // Prefer ai_count if set, else use count
+            latestCountPerTrip[pc.trip_id] = pc.ai_count ?? pc.count ?? 0;
+          }
+        });
+      }
+
+      // Also fetch by bus_id if that column exists (sys-admin extended schema)
       const allBusIds = [
         ...(activeTrips || []).map((t: any) => t.bus_id),
         ...gpsPins.map((p: any) => p.busId)
       ].filter(Boolean);
 
-      let totalPassengers = 0;
       const latestCountPerBus: Record<string, number> = {};
-
       if (allBusIds.length > 0) {
-        const { data: passengerCounts } = await (supabase
+        const { data: busPassengerCounts } = await (supabase
           .from('passenger_counts')
-          .select('bus_id, trip_id, count, recorded_at')
+          .select('bus_id, count, ai_count, recorded_at')
           .in('bus_id', allBusIds)
           .order('recorded_at', { ascending: false }) as any);
 
-        // Keep only the latest count per bus_id
-        (passengerCounts || []).forEach((pc: any) => {
+        (busPassengerCounts || []).forEach((pc: any) => {
           if (pc.bus_id && latestCountPerBus[pc.bus_id] === undefined) {
-            latestCountPerBus[pc.bus_id] = pc.count ?? 0;
+            latestCountPerBus[pc.bus_id] = pc.ai_count ?? pc.count ?? 0;
           }
         });
       }
 
-      // Apply counts to bus markers (matched by busId)
+      // Apply counts to bus markers — trip match first, then bus_id match
       busMarkers.forEach((bus: any) => {
-        const count = latestCountPerBus[bus.busId] ?? 0;
+        const count = latestCountPerTrip[bus.tripId]
+          ?? latestCountPerBus[bus.busId]
+          ?? 0;
         bus.passengers = count;
         totalPassengers += count;
       });
 
-      // Apply counts to GPS pins (matched by busId if available)
+      // Apply counts to GPS pins via bus_id
       gpsPins.forEach((pin: any) => {
-        pin.passengers = pin.busId ? (latestCountPerBus[pin.busId] ?? 0) : 0;
+        pin.passengers = latestCountPerBus[pin.busId] ?? 0;
+      });        bus.passengers = count;
+        totalPassengers += count;
       });
 
       console.log('[LiveMap] Bus markers:', busMarkers.map((b: any) => ({ plate: b.plate, lat: b.lat, lng: b.lng, source: b.locationSource })));
