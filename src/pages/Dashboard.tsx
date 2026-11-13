@@ -180,16 +180,16 @@ export default function Dashboard() {
 
   // Synchronize live camera detection passenger count with map markers and stats in real time
   useEffect(() => {
-    if (videoPassengerCount > 0) {
+    if (typeof videoPassengerCount === 'number' && videoPassengerCount >= 0) {
       setMapBuses(prev => prev.map(bus => {
         if (bus.status === 'active') {
-          return { ...bus, passengers: Math.max(bus.passengers || 0, videoPassengerCount) };
+          return { ...bus, passengers: videoPassengerCount };
         }
         return bus;
       }));
       setMapStats(prev => ({
         ...prev,
-        totalPassengers: Math.max(prev.totalPassengers || 0, videoPassengerCount)
+        totalPassengers: videoPassengerCount
       }));
     }
   }, [videoPassengerCount]);
@@ -272,12 +272,24 @@ export default function Dashboard() {
 
       setActiveTrips(tripsWithBuses);
 
-      // Use count query instead of fetching all records - prevents memory issues
-      const { count: currentPassengersCount } = await supabase
+      // Fetch total all-time passengers from boarded_passengers
+      const { count: allTimePassengersCount } = await supabase
         .from('boarded_passengers')
         .select('*', { count: 'exact', head: true });
 
-      const currentPassengers = currentPassengersCount || 0;
+      const totalPassengersAllTime = allTimePassengersCount || 0;
+
+      // Calculate current passengers on board from active trips
+      let currentPassengers = 0;
+      if (trips && trips.length > 0) {
+        const activeTripIds = trips.map(t => t.id).filter(Boolean);
+        const { count: onBoardCount } = await supabase
+          .from('boarded_passengers')
+          .select('*', { count: 'exact', head: true })
+          .in('trip_id', activeTripIds)
+          .is('alighted_at', null);
+        currentPassengers = onBoardCount || 0;
+      }
 
       // Use aggregation query for total fares - more efficient
       const { data: fareAgg } = await supabase
@@ -380,7 +392,7 @@ export default function Dashboard() {
         totalBuses,
         activeTrips: trips?.length || 0,
         currentPassengers,
-        totalPassengersAllTime: currentPassengers,
+        totalPassengersAllTime,
         totalFaresAllTime: totalFaresAllTime,
         activeIrregularities: irregularities?.length || 0,
         busesOnline,
@@ -694,7 +706,7 @@ export default function Dashboard() {
     },
     {
       title: 'Passengers On Board',
-      value: kpiData.currentPassengers,
+      value: Math.max(kpiData.currentPassengers, (typeof videoPassengerCount === 'number' && videoPassengerCount >= 0 ? videoPassengerCount : 0)),
       subtitle: `${kpiData.totalPassengersAllTime} total all time`,
       icon: Users,
       color: 'text-blue-400',
