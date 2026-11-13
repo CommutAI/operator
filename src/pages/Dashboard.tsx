@@ -762,10 +762,10 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        {/* Responsive 4:3 Camera Layout + Telematics Panel (Full width edge-to-edge fit) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch w-full">
-          {/* Video Feed (Native 4:3 Aspect Ratio) */}
-          <div className="lg:col-span-7 xl:col-span-7 2xl:col-span-8 flex flex-col justify-center w-full">
+        {/* Responsive 4:3 Camera Layout + Telematics Panel (Compact 4:3 camera + full width telemetry grid) */}
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch w-full">
+          {/* Video Feed (Compact 4:3 Aspect Ratio) */}
+          <div className="w-full lg:w-[420px] xl:w-[480px] shrink-0 flex flex-col justify-center">
             <div
               ref={videoContainerRef}
               className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
@@ -783,24 +783,24 @@ export default function Dashboard() {
               {!videoStreaming && (
                 <div className="absolute inset-0 flex items-center justify-center p-6 bg-gradient-to-b from-black/80 via-black/90 to-black/95">
                   <div className="text-center max-w-sm">
-                    <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-3 shadow-inner">
+                    <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-2.5 shadow-inner">
                       {videoConnectionStatus === 'connecting' ? (
-                        <RefreshCw className="w-8 h-8 text-orange-400 animate-spin" />
+                        <RefreshCw className="w-7 h-7 text-orange-400 animate-spin" />
                       ) : (
-                        <Video className="w-8 h-8 text-white/30" />
+                        <Video className="w-7 h-7 text-white/30" />
                       )}
                     </div>
-                    <p className="text-white font-semibold text-base mb-1">
+                    <p className="text-white font-semibold text-sm mb-0.5">
                       {videoConnectionStatus === 'connecting' ? 'Connecting to camera…' : 'Camera Stream Offline'}
                     </p>
-                    <p className="text-white/40 text-xs mb-4 leading-relaxed">
+                    <p className="text-white/40 text-[11px] mb-3 leading-relaxed">
                       {videoConnectionMessage || 'Waiting for live frames from Raspberry Pi camera.'}
                     </p>
                     <button
                       onClick={videoRefresh}
-                      className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 rounded-xl text-xs font-medium transition-all flex items-center gap-2 mx-auto active:scale-95"
+                      className="px-3.5 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 mx-auto active:scale-95"
                     >
-                      <RefreshCw size={13} />
+                      <RefreshCw size={12} />
                       Reconnect Feed
                     </button>
                   </div>
@@ -808,46 +808,46 @@ export default function Dashboard() {
               )}
 
               {/* Top HUD Overlay */}
-              <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none z-10">
-                <div className="flex items-center gap-2">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 shadow-lg border ${
+              <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between pointer-events-none z-10">
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold backdrop-blur-md flex items-center gap-1 shadow-lg border ${
                     videoStreaming
                       ? 'bg-red-500/85 text-white border-red-400/40'
                       : 'bg-black/70 text-white/60 border-white/10'
                   }`}>
-                    <span className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-white animate-pulse' : 'bg-red-400'}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${videoStreaming ? 'bg-white animate-pulse' : 'bg-red-400'}`} />
                     {videoStreaming ? 'LIVE' : 'OFFLINE'}
                   </span>
-                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white/90 text-xs px-2.5 py-1 rounded-full font-medium shadow-md">
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white/90 text-[11px] px-2 py-0.5 rounded-full font-medium shadow-md">
                     Bus #1 • Interior
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white text-xs px-3 py-1 rounded-full font-bold flex items-center gap-1.5 shadow-lg">
-                    <Users size={13} className="text-orange-400" />
+                <div className="flex items-center gap-1.5">
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white text-[11px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-lg">
+                    <Users size={12} className="text-orange-400" />
                     <span>{videoPassengerCount} Detected</span>
                   </span>
                   <button
                     onClick={toggleFullscreen}
-                    className="pointer-events-auto bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/10 text-white/80 hover:text-white p-1.5 rounded-full transition-all"
+                    className="pointer-events-auto bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/10 text-white/80 hover:text-white p-1 rounded-full transition-all"
                     title="Fullscreen"
                   >
-                    <Maximize2 size={13} />
+                    <Maximize2 size={12} />
                   </button>
                 </div>
               </div>
 
               {/* Bottom HUD Overlay */}
-              <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none z-10 text-[11px] text-white/80">
-                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-full flex items-center gap-2 shadow-md">
-                  <Activity size={12} className="text-emerald-400" />
+              <div className="absolute bottom-2.5 inset-x-2.5 flex items-center justify-between pointer-events-none z-10 text-[10px] text-white/80">
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2 py-0.5 rounded-full flex items-center gap-1.5 shadow-md">
+                  <Activity size={11} className="text-emerald-400" />
                   <span className="font-mono">AI: YOLOv8n</span>
                   <span className="text-white/40">•</span>
                   <span className="text-white/60">640×480 (4:3)</span>
                 </div>
-                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md">
-                  <Wifi size={12} className={videoStreaming ? 'text-green-400' : 'text-white/40'} />
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+                  <Wifi size={11} className={videoStreaming ? 'text-green-400' : 'text-white/40'} />
                   <span className="font-medium capitalize">{videoStreaming ? '30 FPS' : videoConnectionStatus}</span>
                 </div>
               </div>
@@ -855,46 +855,70 @@ export default function Dashboard() {
           </div>
 
           {/* Telematics & AI Controls Sidebar */}
-          <div className="lg:col-span-5 xl:col-span-5 2xl:col-span-4 flex flex-col justify-between gap-3.5 w-full">
-            {/* Occupancy Card */}
-            <div className="glass-card p-4 rounded-xl border border-white/10">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-white/60 text-xs font-medium uppercase tracking-wider">Bus Occupancy</span>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                  videoPassengerCount > 25
-                    ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                    : videoPassengerCount > 10
-                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                }`}>
-                  {videoPassengerCount > 25 ? 'Near Capacity' : videoPassengerCount > 10 ? 'Moderate' : 'Low Occupancy'}
-                </span>
+          <div className="flex-1 min-w-0 flex flex-col justify-between gap-3 w-full">
+            {/* Row 1: Occupancy Hero + Active Vehicle Telematics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Occupancy Card */}
+              <div className="glass-card p-4 rounded-xl border border-white/10 flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-white/60 text-xs font-medium uppercase tracking-wider">Bus Occupancy</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    videoPassengerCount > 25
+                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      : videoPassengerCount > 10
+                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  }`}>
+                    {videoPassengerCount > 25 ? 'Near Capacity' : videoPassengerCount > 10 ? 'Moderate' : 'Low Occupancy'}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
+                  <span className="text-white/50 text-xs font-medium">/ 30 seats</span>
+                </div>
+                <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      videoPassengerCount > 25 ? 'bg-red-500' : videoPassengerCount > 10 ? 'bg-yellow-400' : 'bg-emerald-400'
+                    }`}
+                    style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex items-baseline gap-2 mb-2">
-                <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
-                <span className="text-white/50 text-sm font-medium">/ 30 seats</span>
-              </div>
-              {/* Progress Bar */}
-              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    videoPassengerCount > 25 ? 'bg-red-500' : videoPassengerCount > 10 ? 'bg-yellow-400' : 'bg-emerald-400'
-                  }`}
-                  style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
-                />
+
+              {/* Active Bus & Telematics Info */}
+              <div className="glass-card p-4 rounded-xl border border-white/10 flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-white/60 text-xs font-medium uppercase tracking-wider">Active Vehicle</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                    Bus #1 • 1001
+                  </span>
+                </div>
+                <div>
+                  <div className="text-white font-semibold text-sm truncate">Manolo Fortich ↔ Agora Terminal</div>
+                  <div className="text-white/50 text-xs mt-0.5">Route: Main Commuter Express</div>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] text-white/60 pt-1 border-t border-white/5">
+                  <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                    <Navigation size={11} /> GPS Active
+                  </span>
+                  <span>•</span>
+                  <span>Speed: 0 km/h</span>
+                </div>
               </div>
             </div>
 
-            {/* Stream Telemetry Grid */}
-            <div className="grid grid-cols-2 gap-2.5">
+            {/* Row 2: 4 Stream Telemetry Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <div className="glass-card p-3 rounded-xl border border-white/10">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <Activity size={13} className="text-blue-400" />
                   <span>AI Model</span>
                 </div>
-                <div className="text-white font-semibold text-sm">YOLOv8n ONNX</div>
-                <div className="text-emerald-400 text-[10px] mt-0.5 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Realtime Detection
+                <div className="text-white font-semibold text-sm truncate">YOLOv8n ONNX</div>
+                <div className="text-emerald-400 text-[10px] mt-0.5 truncate flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Realtime Active
                 </div>
               </div>
 
@@ -921,8 +945,8 @@ export default function Dashboard() {
                   <CheckCircle size={13} className="text-orange-400" />
                   <span>Stream State</span>
                 </div>
-                <div className="text-white font-semibold text-sm capitalize">{videoStreaming ? 'Active' : videoConnectionStatus}</div>
-                <div className="text-white/50 text-[10px] mt-0.5">Bus #1 Telematics</div>
+                <div className="text-white font-semibold text-sm capitalize truncate">{videoStreaming ? 'Active' : videoConnectionStatus}</div>
+                <div className="text-white/50 text-[10px] mt-0.5">Cloudflare Tunnel</div>
               </div>
             </div>
           </div>
