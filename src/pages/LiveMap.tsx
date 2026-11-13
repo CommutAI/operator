@@ -122,7 +122,7 @@ const BusMarker = ({ bus, liveCount }: { bus: BusData; liveCount: number }) => {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 const DEBOUNCE_MS = 1500;
-const DEFAULT_CENTER: [number, number] = [8.429, 124.762];
+const DEFAULT_CENTER: [number, number] = [8.41255, 124.81642];
 const MAIN_ROUTE = { start: [8.367004436125404, 124.86562729876327] as [number, number], end: [8.491303183117974, 124.65757370963438] as [number, number] };
 
 const LiveMap = () => {
@@ -185,14 +185,16 @@ const LiveMap = () => {
       if (latestAny) {
         const covered = busMarkers.some(b => Math.abs(b.lat - latestAny.lat) < 0.0001 && Math.abs(b.lng - latestAny.lng) < 0.0001);
         if (!covered) {
-          const pisBus = allBuses.find((b: any) => b.bus_number === 1);
+          const pisBus = allBuses.find((b: any) => b.status === 'active')
+            || allBuses.find((b: any) => b.bus_number === 1001 || b.bus_number === 1)
+            || allBuses[0];
           gpsPins.push({
             id: 'gps-live',
-            plate: pisBus ? `Bus ${pisBus.bus_number}` : 'Live GPS',
-            route: latestAny.tripId ? `Trip: ${latestAny.tripId.slice(0, 8)}…` : 'No active trip',
+            plate: pisBus ? String(pisBus.bus_number || pisBus.plate_number) : '1001',
+            route: pisBus?.route || (latestAny.tripId ? `Trip: ${latestAny.tripId.slice(0, 8)}…` : 'Manolo Fortich Terminal ↔ Agora Terminal'),
             lat: latestAny.lat, lng: latestAny.lng,
             passengers: 0, status: 'active',
-            locationSource: `${latestAny.source} (live)`,
+            locationSource: `${latestAny.source} (latest GPS)`,
             locationUpdatedAt: latestAny.recordedAt,
             busId: pisBus?.id ?? null, tripId: latestAny.tripId,
           });
@@ -200,11 +202,14 @@ const LiveMap = () => {
       }
 
       // ── Inactive buses (no GPS) ──────────────────────────────────────────
-      const activeTripBusIds = new Set(activeTrips.map((t: any) => t.bus_id));
+      const activeTripBusIds = new Set([
+        ...activeTrips.map((t: any) => t.bus_id),
+        ...gpsPins.map((p: any) => p.busId)
+      ].filter(Boolean));
       const inactiveBuses: BusData[] = allBuses
-        .filter((b: any) => !activeTripBusIds.has(b.id))
+        .filter((b: any) => !activeTripBusIds.has(b.id) && b.status === 'active')
         .map((b: any) => ({
-          id: b.id, plate: b.plate_number, route: b.route,
+          id: b.id, plate: String(b.bus_number || b.plate_number), route: b.route,
           lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1],
           passengers: 0, status: b.status === 'maintenance' ? 'maintenance' : 'idle',
           locationSource: 'fallback', locationUpdatedAt: null,

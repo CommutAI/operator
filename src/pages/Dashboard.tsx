@@ -454,12 +454,12 @@ export default function Dashboard() {
 
         // Accept any GPS row — Pi sends GPS without trip_id when no trip is active
         const isValidGps = gps && Number.isFinite(gps.lat) && Number.isFinite(gps.lng) && gps.lat !== 0 && gps.lng !== 0;
-        const lat = isValidGps ? gps.lat : 8.429;
-        const lng = isValidGps ? gps.lng : 124.762;
+        const lat = isValidGps ? gps.lat : 8.41255083;
+        const lng = isValidGps ? gps.lng : 124.81642417;
 
         return {
           id: trip.id,
-          plate: trip.buses?.bus_number || trip.buses?.plate_number || 'Unknown',
+          plate: trip.buses?.bus_number ? String(trip.buses.bus_number) : (trip.buses?.plate_number || 'Unknown'),
           route: trip.buses?.route || 'Unknown',
           lat: lat,
           lng: lng,
@@ -471,6 +471,33 @@ export default function Dashboard() {
           tripId: trip.id
         };
       });
+
+      // Always show active bus with live GPS position even when no trip is currently in progress
+      if (busMarkers.length === 0) {
+        const activeBus = (allBuses || []).find((b: any) => b.status === 'active')
+          || (allBuses || []).find((b: any) => b.bus_number === 1001)
+          || (allBuses || [])[0];
+
+        if (activeBus) {
+          const isValidGps = latestGpsAny && Number.isFinite(latestGpsAny.lat) && Number.isFinite(latestGpsAny.lng) && latestGpsAny.lat !== 0 && latestGpsAny.lng !== 0;
+          const lat = isValidGps ? latestGpsAny.lat : 8.41255083;
+          const lng = isValidGps ? latestGpsAny.lng : 124.81642417;
+
+          busMarkers.push({
+            id: activeBus.id || 'bus-live-gps',
+            plate: activeBus.bus_number ? String(activeBus.bus_number) : (activeBus.plate_number || '1001'),
+            route: activeBus.route || 'Manolo Fortich Terminal ↔ Agora Terminal',
+            lat: lat,
+            lng: lng,
+            passengers: 0,
+            status: 'active',
+            locationSource: latestGpsAny ? `${latestGpsAny.source} (latest GPS)` : 'fallback',
+            locationUpdatedAt: latestGpsAny?.recordedAt || null,
+            busId: activeBus.id,
+            tripId: null
+          });
+        }
+      }
 
       // Fetch passenger counts from both passenger_counts and boarded_passengers
       const tripIds = (activeTrips || []).map((t: any) => t.id).filter(Boolean);
@@ -519,7 +546,7 @@ export default function Dashboard() {
         totalPassengers += liveCount;
       });
 
-      // Only show active buses (those with in-progress trips)
+      // Show active buses / live GPS bus markers
       setMapBuses(busMarkers as any);
 
       // Calculate stats
@@ -527,9 +554,9 @@ export default function Dashboard() {
       const activeBusesCount = (allBuses || []).filter((b: any) => b.status === 'active').length;
 
       setMapStats({
-        totalPassengers,
-        activeBuses: activeBusesCount,
-        totalRoutes: uniqueRoutes.length,
+        totalPassengers: Math.max(totalPassengers, videoPassengerCount || 0),
+        activeBuses: Math.max(activeBusesCount, busMarkers.length),
+        totalRoutes: uniqueRoutes.length || 1,
       });
 
       const routeColors = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ef4444'];
@@ -1007,13 +1034,13 @@ export default function Dashboard() {
 
         <div className="h-[400px] sm:h-[500px] rounded-xl overflow-hidden">
           <MapContainer
-            center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.429, 124.762]}
+            center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.41255, 124.81642]}
             zoom={13}
             style={{ height: '100%', width: '100%' }}
             dragging={true}
             scrollWheelZoom={true}
           >
-            <MapRecenter center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.429, 124.762]} />
+            <MapRecenter center={mapBuses.length > 0 && mapBuses[0].lat ? [mapBuses[0].lat, mapBuses[0].lng] : [8.41255, 124.81642]} />
             {Object.values(routeCoordinates).flat().length > 0 && (
               <MapRouteFitter coordinates={Object.values(routeCoordinates).flat()} />
             )}
