@@ -359,10 +359,10 @@ export default function AIMonitoring() {
           </div>
         </div>
 
-        {/* Split Pane Body (Left: Video Stream, Right: AI Telematics) */}
+        {/* Split Pane Body (Left: 58% Video Stream, Right: 42% AI Telematics) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-white/10 items-stretch">
-          {/* Left Pane: Live Camera Stream */}
-          <div className="lg:col-span-5 p-4 lg:p-5 flex flex-col justify-center bg-black/30">
+          {/* Left Pane (58%): Live Camera Stream */}
+          <div className="lg:col-span-7 p-4 lg:p-5 flex flex-col justify-center bg-black/30">
             <div
               ref={videoContainerRef}
               className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-xl overflow-hidden border border-white/15 shadow-xl flex items-center justify-center group"
@@ -449,31 +449,32 @@ export default function AIMonitoring() {
             </div>
           </div>
 
-          {/* Right Pane: AI Telematics & Controls */}
-          <div className="lg:col-span-7 p-4 lg:p-5 flex flex-col justify-between gap-4 bg-white/[0.01]">
+          {/* Right Pane (42%): AI Telematics & Controls */}
+          <div className="lg:col-span-5 p-4 lg:p-5 flex flex-col justify-between gap-3 bg-white/[0.01]">
             {/* Top Section: AI Passenger Counter Hero */}
-            <div className="glass-card p-4 rounded-xl border border-white/10">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Users size={16} className="text-orange-400" />
+            <div className="glass-card p-3.5 sm:p-4 rounded-xl border border-white/10">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Users size={15} className="text-orange-400" />
                   <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">AI Passenger Counter</span>
                 </div>
-                <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Real-time Active
                 </span>
               </div>
 
               <div className="flex items-baseline justify-between mb-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
-                  <span className="text-white/50 text-sm font-medium">passenger{videoPassengerCount === 1 ? '' : 's'} on board</span>
+                  <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
+                  <span className="text-white/50 text-xs sm:text-sm font-medium">passenger{videoPassengerCount === 1 ? '' : 's'} on board</span>
                 </div>
                 <span className="text-xs text-white/50 font-medium">
                   {30 - videoPassengerCount} seats available
                 </span>
               </div>
 
-              <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
+              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full bg-orange-400 transition-all duration-500"
                   style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
@@ -481,49 +482,74 @@ export default function AIMonitoring() {
               </div>
             </div>
 
+            {/* Middle Section: Detection Pipeline Info */}
+            <div className="glass-card p-3 sm:p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5">
+                  <Activity size={14} className="text-blue-400" />
+                  <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">Detection Pipeline</span>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                  Real-time Active
+                </span>
+              </div>
+              <div>
+                <div className="text-white font-semibold text-xs sm:text-sm">YOLOv8 Nano Neural Network</div>
+                <div className="text-white/50 text-[11px] mt-0.5">Automated Bounding & Occupancy Tally</div>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-white/60 pt-1.5 mt-1 border-t border-white/5">
+                <span className="text-emerald-400 font-medium">Confidence &gt; 0.50</span>
+                <span>•</span>
+                <span>30 FPS</span>
+                <span>•</span>
+                <span>640×480 (4:3)</span>
+              </div>
+            </div>
+
             {/* Bottom Section: 4 AI Specs Grid */}
-            <div className="grid grid-cols-2 gap-3 flex-1">
-              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
-                  <Activity size={13} className="text-blue-400" />
-                  <span>Detection Model</span>
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+                  <Activity size={12} className="text-blue-400 shrink-0" />
+                  <span className="truncate">Detection Model</span>
                 </div>
                 <div>
-                  <div className="text-white font-semibold text-sm truncate">YOLOv8n ONNX</div>
+                  <div className="text-white font-semibold text-xs sm:text-sm truncate">YOLOv8n ONNX</div>
                   <div className="text-emerald-400 text-[10px] mt-0.5">Confidence &gt; 0.50</div>
                 </div>
               </div>
 
-              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
-                  <Video size={13} className="text-purple-400" />
-                  <span>Aspect & Res</span>
+              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+                  <Video size={12} className="text-purple-400 shrink-0" />
+                  <span className="truncate">Aspect & Res</span>
                 </div>
                 <div>
-                  <div className="text-white font-semibold text-sm">640×480 (4:3)</div>
-                  <div className="text-white/50 text-[10px] mt-0.5">Zero Pillarbox</div>
+                  <div className="text-white font-semibold text-xs sm:text-sm truncate">640×480 (4:3)</div>
+                  <div className="text-white/50 text-[10px] mt-0.5 truncate">Zero Pillarbox</div>
                 </div>
               </div>
 
-              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
-                  <Clock size={13} className="text-green-400" />
-                  <span>Inference Time</span>
+              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+                  <Clock size={12} className="text-green-400 shrink-0" />
+                  <span className="truncate">Inference Time</span>
                 </div>
                 <div>
-                  <div className="text-white font-semibold text-sm">~28 ms / frame</div>
-                  <div className="text-white/50 text-[10px] mt-0.5">Real-time Stream</div>
+                  <div className="text-white font-semibold text-xs sm:text-sm truncate">~28 ms / frame</div>
+                  <div className="text-white/50 text-[10px] mt-0.5 truncate">Real-time Stream</div>
                 </div>
               </div>
 
-              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
-                  <CheckCircle size={13} className="text-orange-400" />
-                  <span>Feed Pipeline</span>
+              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+                  <CheckCircle size={12} className="text-orange-400 shrink-0" />
+                  <span className="truncate">Feed Pipeline</span>
                 </div>
                 <div>
-                  <div className="text-white font-semibold text-sm capitalize truncate">{videoStreaming ? 'Streaming' : videoConnectionStatus}</div>
-                  <div className="text-white/50 text-[10px] mt-0.5">Cloudflare Tunnel</div>
+                  <div className="text-white font-semibold text-xs sm:text-sm capitalize truncate">{videoStreaming ? 'Streaming' : videoConnectionStatus}</div>
+                  <div className="text-white/50 text-[10px] mt-0.5 truncate">Cloudflare Tunnel</div>
                 </div>
               </div>
             </div>
