@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import { Bus, Navigation, Users, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -6,50 +6,72 @@ import { useBackendVideo } from '../hooks/useBackendVideo';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for default marker icons in Leaflet
+// ─── Leaflet icon fix ────────────────────────────────────────────────────────
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconUrl:       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl:     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// Custom GPS marker icon (bright green with pulse)
 const gpsIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-  className: 'pulse-dot'
+  iconUrl:    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl:  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize:   [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
 });
 
-// Hide Leaflet attribution and add custom animation
 if (!document.getElementById('leaflet-map-styles')) {
-  const style = document.createElement('style');
-  style.id = 'leaflet-map-styles';
-  style.textContent = `
-    .leaflet-control-attribution {
-      display: none !important;
-    }
-    .pulse-dot {
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-  `;
-  document.head.appendChild(style);
+  const s = document.createElement('style');
+  s.id = 'leaflet-map-styles';
+  s.textContent = `.leaflet-control-attribution{display:none!important}`;
+  document.head.appendChild(s);
 }
 
+// ─── OSRM route cache with LRU eviction to prevent memory leaks ────────────────
+const ROUTE_CACHE_MAX_SIZE = 50;
+const routeCache = new Map<string, [number, number][]>();
+
+async function fetchRoute(start: [number, number], end: [number, number]): Promise<[number, number][]> {
+  const key = `${start[0]},${start[1]}_${end[0]},${end[1]}`;
+  if (routeCache.has(key)) {
+    const cached = routeCache.get(key)!;
+    // Move to end for LRU
+    routeCache.delete(key);
+    routeCache.set(key, cached);
+    return cached;
+  }
+  try {
+    const r = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
+    );
+    const d = await r.json();
+    if (d.routes?.[0]) {
+      const coords: [number, number][] = d.routes[0].geometry.coordinates.map(
+        ([lng, lat]: [number, number]) => [lat, lng]
+      );
+      // Evict oldest if cache is full
+      if (routeCache.size >= ROUTE_CACHE_MAX_SIZE) {
+        const firstKey = routeCache.keys().next().value;
+        routeCache.delete(firstKey);
+      }
+      routeCache.set(key, coords);
+      return coords;
+    }
+  } catch { /* fall through */ }
+  const fallback: [number, number][] = [start, end];
+  if (routeCache.size >= ROUTE_CACHE_MAX_SIZE) {
+    const firstKey = routeCache.keys().next().value;
+    routeCache.delete(firstKey);
+  }
+  routeCache.set(key, fallback);
+  return fallback;
+}
+
+// ─── Sub-components defined OUTSIDE LiveMap to prevent remount every render ──
 const SummaryCard = ({ title, value, icon: Icon, color }: { title: string; value: number; icon: any; color: string }) => (
   <div className="glass-card p-4 hover:scale-105 transition-transform duration-300">
-    <div className="flex items-center justify-between mb-2">
-      <div className={`w-10 h-10 rounded-lg ${color} flex items-center justify-center`}>
-        <Icon className="w-5 h-5 text-white" />
-      </div>
+    <div className={`w-10 h-10 rounded-lg ${color} flex items-center justify-center mb-2`}>
+      <Icon className="w-5 h-5 text-white" />
     </div>
     <h3 className="text-white/60 text-xs mb-1">{title}</h3>
     <p className="text-white text-xl font-bold">{value}</p>
@@ -58,397 +80,241 @@ const SummaryCard = ({ title, value, icon: Icon, color }: { title: string; value
 
 const MapRecenter = ({ center }: { center: [number, number] }) => {
   const map = useMap();
-
-  useEffect(() => {
-    map.setView(center, map.getZoom());
-  }, [center, map]);
-
+  useEffect(() => { map.setView(center, map.getZoom()); }, [center, map]);
   return null;
 };
 
-const MapRouteFitter = ({ coordinates }: { coordinates: [number, number][] }) => {
-  const map = useMap();
-  
-  useEffect(() => {
-    if (coordinates.length > 0) {
-      const bounds = L.latLngBounds(coordinates);
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-  }, [coordinates, map]);
-  
-  return null;
+interface BusData {
+  id: string; plate: string | number; route: string;
+  lat: number; lng: number; passengers: number;
+  status: string; locationSource: string;
+  locationUpdatedAt: string | null;
+  busId: string | null; tripId: string | null;
+}
+
+// BusMarker is stable — defined outside the component
+const BusMarker = ({ bus, liveCount }: { bus: BusData; liveCount: number }) => {
+  const isGps = bus.id === 'gps-live';
+  const displayCount = bus.status === 'active' ? liveCount : bus.passengers;
+  return (
+    <Marker position={[bus.lat, bus.lng]} icon={isGps ? gpsIcon : undefined}>
+      <Popup>
+        <div className="p-2 min-w-[180px]">
+          <h3 className="font-bold text-gray-800">{bus.plate}</h3>
+          <p className="text-sm text-gray-600">{bus.route}</p>
+          <p className="text-xs text-gray-700 mt-2">{bus.lat.toFixed(6)}, {bus.lng.toFixed(6)}</p>
+          <p className="text-xs text-gray-500 mt-1">Source: {bus.locationSource || 'fallback'}</p>
+          {bus.locationUpdatedAt && (
+            <p className="text-xs text-gray-500">Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}</p>
+          )}
+          <div className="flex items-center gap-2 mt-2">
+            <Users size={16} className="text-orange-500" />
+            <span className="text-sm font-medium">{displayCount} passenger{displayCount !== 1 ? 's' : ''}</span>
+          </div>
+          <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+            {bus.status}
+          </span>
+        </div>
+      </Popup>
+    </Marker>
+  );
 };
 
-const fetchRouteCoordinates = async (startCoords: [number, number], endCoords: [number, number]): Promise<[number, number][]> => {
-  try {
-    const response = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=geojson`
-    );
-    const data = await response.json();
-    
-    if (data.routes && data.routes[0]) {
-      return data.routes[0].geometry.coordinates.map(
-        (coord: [number, number]) => [coord[1], coord[0]] // Convert [lng, lat] to [lat, lng]
-      );
-    }
-  } catch (error) {
-    console.error('Error fetching route:', error);
-  }
-  
-  // Fallback to straight line
-  return [startCoords, endCoords];
-};
+// ─── Main component ───────────────────────────────────────────────────────────
+const DEBOUNCE_MS = 1500;
+const DEFAULT_CENTER: [number, number] = [8.429, 124.762];
+const MAIN_ROUTE = { start: [8.367004436125404, 124.86562729876327] as [number, number], end: [8.491303183117974, 124.65757370963438] as [number, number] };
 
 const LiveMap = () => {
-  const [buses, setBuses] = useState<any[]>([]);
-  const [routes, setRoutes] = useState<any[]>([]);
-  const [routeCoordinates, setRouteCoordinates] = useState<Record<string, [number, number][]>>({});
-  const [latestGps, setLatestGps] = useState<any>(null);
-  const [stats, setStats] = useState({
-    totalPassengers: 0,
-    activeBuses: 0,
-    totalRoutes: 0,
-    maintenanceBuses: 0
-  });
-  const [loading, setLoading] = useState(true);
+  const [buses, setBuses]             = useState<BusData[]>([]);
+  const [routes, setRoutes]           = useState<any[]>([]);
+  const [routeCoords, setRouteCoords] = useState<Record<string, [number, number][]>>({});
+  const [latestGps, setLatestGps]     = useState<any>(null);
+  const [stats, setStats]             = useState({ totalPassengers: 0, activeBuses: 0, totalRoutes: 0, maintenanceBuses: 0 });
+  const [loading, setLoading]         = useState(true);
 
-  // Get live passenger count directly from Pi WebSocket (same source as Video Monitoring)
   const { passengerCount: livePassengerCount } = useBackendVideo({ autoConnect: true });
 
-  useEffect(() => {
-    fetchLiveMapData();
-    // Set up real-time subscription for trips
-    const subscription = supabase
-      .channel('trips-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
-        fetchLiveMapData();
-      })
-      .subscribe();
+  // Debounce ref — prevents flooding on rapid GPS inserts
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const gpsSubscription = supabase
-      .channel('live-map-gps-channel')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gps_locations' }, () => {
-        fetchLiveMapData();
-      })
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-      gpsSubscription.unsubscribe();
-    };
-  }, []);
-
-  const fetchLiveMapData = async () => {
+  const fetchLiveMapData = useCallback(async () => {
     try {
-      setLoading(true);
+      // Run all independent queries in parallel
+      const [tripsRes, busesRes, gpsRes] = await Promise.all([
+        supabase.from('trips').select('id, bus_id, current_lat, current_lng, gps_updated_at, buses(id, bus_number, plate_number, route)').eq('status', 'in_progress'),
+        supabase.from('buses').select('id, bus_number, plate_number, route, status'),
+        (supabase.from('gps_locations').select('trip_id, latitude, longitude, source, recorded_at').order('recorded_at', { ascending: false }).limit(10) as any),
+      ]);
 
-      // Fetch active trips with bus information
-      const { data: activeTrips } = await supabase
-        .from('trips')
-        .select('*, buses(*)')
-        .eq('status', 'in_progress')
-        .order('started_at', { ascending: false });
+      const activeTrips: any[] = tripsRes.data || [];
+      const allBuses: any[]    = busesRes.data || [];
+      const gpsRows: any[]     = gpsRes.data   || [];
 
-      // Fetch all buses
-      const { data: allBuses } = await supabase
-        .from('buses')
-        .select('*');
+      // ── Build GPS lookup ─────────────────────────────────────────────────
+      const latestByTrip: Record<string, any> = {};
+      let latestAny: any = null;
+      for (const row of gpsRows) {
+        const lat = parseFloat(row.latitude), lng = parseFloat(row.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const gps = { lat, lng, source: row.source || 'gps', recordedAt: row.recorded_at, tripId: row.trip_id || null };
+        if (!latestAny) latestAny = gps;
+        if (row.trip_id && !latestByTrip[row.trip_id]) latestByTrip[row.trip_id] = gps;
+      }
 
-      const { data: gpsRows, error: gpsError } = await (supabase
-        .from('gps_locations')
-        .select('trip_id, latitude, longitude, source, recorded_at')
-        .order('recorded_at', { ascending: false })
-        .limit(100) as any);
-
-      console.log('[LiveMap] GPS rows fetched:', gpsRows?.length, gpsError);
-      console.log('[LiveMap] Latest GPS row:', gpsRows?.[0]);
-
-      const latestGpsByTripId: Record<string, any> = {};
-      let latestGpsAny: any = null;
-      (gpsRows || []).forEach((row: any) => {
-        const lat = parseFloat(row.latitude);
-        const lng = parseFloat(row.longitude);
-        const gps = {
-          lat,
-          lng,
-          source: row.source || 'gps',
-          recordedAt: row.recorded_at,
-          tripId: row.trip_id || null
-        };
-
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-        if (!latestGpsAny) latestGpsAny = gps;
-        if (row.trip_id && !latestGpsByTripId[row.trip_id]) {
-          latestGpsByTripId[row.trip_id] = gps;
-        }
-      });
-
-      console.log('[LiveMap] latestGpsAny:', latestGpsAny);
-
-      // Transform trips to bus markers
-      const busMarkers = (activeTrips || []).map((trip: any, index: number) => {
-        // Prefer GPS matched to this trip, then fall back to any latest GPS
-        const gps = latestGpsByTripId[trip.id] || latestGpsAny;
-
+      // ── Bus markers from active trips ────────────────────────────────────
+      const busMarkers: BusData[] = activeTrips.map((trip: any) => {
+        const gps = latestByTrip[trip.id] || latestAny;
         return {
-          id: trip.id,
-          plate: trip.buses?.bus_number || trip.buses?.plate_number || 'Unknown',
-          route: trip.buses?.route || 'Unknown',
-          lat: gps?.lat ?? trip.current_lat ?? 8.429,
-          lng: gps?.lng ?? trip.current_lng ?? 124.762,
-          passengers: 0,
-          status: 'active',
-          locationSource: gps ? (gps.tripId ? gps.source : `${gps.source} (latest GPS)`) : 'fallback',
+          id:      trip.id,
+          plate:   trip.buses?.bus_number || trip.buses?.plate_number || 'Unknown',
+          route:   trip.buses?.route      || 'Unknown',
+          lat:     gps?.lat ?? trip.current_lat  ?? DEFAULT_CENTER[0],
+          lng:     gps?.lng ?? trip.current_lng  ?? DEFAULT_CENTER[1],
+          passengers:       0,
+          status:           'active',
+          locationSource:   gps ? (gps.tripId ? gps.source : `${gps.source} (latest GPS)`) : 'fallback',
           locationUpdatedAt: gps?.recordedAt || trip.gps_updated_at || null,
-          busId: trip.bus_id,
-          tripId: trip.id
+          busId:   trip.bus_id,
+          tripId:  trip.id,
         };
       });
 
-      // ALWAYS show a GPS pin if we have GPS data in the database
-      // This ensures GPS location is displayed even without active trips
-      const gpsPins: any[] = [];
-      
-      if (latestGpsAny) {
-        // Check if any trip marker is already using this exact GPS location
-        const alreadyDisplayed = busMarkers.some((b: any) => 
-          Math.abs(b.lat - latestGpsAny.lat) < 0.0001 && 
-          Math.abs(b.lng - latestGpsAny.lng) < 0.0001
-        );
-        
-        // Try to resolve bus_id from allBuses using bus_number 1 (the Pi's bus)
-        const pisBus = (allBuses || []).find((b: any) => b.bus_number === 1);
-
-        // Only add GPS pin if not already displayed by a trip marker
-        if (!alreadyDisplayed) {
+      // ── GPS pin when no trip covers that location ────────────────────────
+      const gpsPins: BusData[] = [];
+      if (latestAny) {
+        const covered = busMarkers.some(b => Math.abs(b.lat - latestAny.lat) < 0.0001 && Math.abs(b.lng - latestAny.lng) < 0.0001);
+        if (!covered) {
+          const pisBus = allBuses.find((b: any) => b.bus_number === 1);
           gpsPins.push({
             id: 'gps-live',
-            plate: pisBus ? `Bus ${pisBus.bus_number}` : '🚍 Live GPS Location',
-            route: latestGpsAny.tripId ? `Trip: ${latestGpsAny.tripId.slice(0, 8)}...` : 'Current GPS Position',
-            lat: latestGpsAny.lat,
-            lng: latestGpsAny.lng,
-            passengers: 0,
-            status: 'active',
-            locationSource: `${latestGpsAny.source} (live)`,
-            locationUpdatedAt: latestGpsAny.recordedAt,
-            busId: pisBus?.id ?? null,
-            tripId: latestGpsAny.tripId
+            plate: pisBus ? `Bus ${pisBus.bus_number}` : 'Live GPS',
+            route: latestAny.tripId ? `Trip: ${latestAny.tripId.slice(0, 8)}…` : 'No active trip',
+            lat: latestAny.lat, lng: latestAny.lng,
+            passengers: 0, status: 'active',
+            locationSource: `${latestAny.source} (live)`,
+            locationUpdatedAt: latestAny.recordedAt,
+            busId: pisBus?.id ?? null, tripId: latestAny.tripId,
           });
-          
-          console.log('[LiveMap] Added GPS pin at:', latestGpsAny.lat, latestGpsAny.lng);
-        } else {
-          console.log('[LiveMap] GPS location already displayed by trip marker');
         }
-      } else {
-        console.log('[LiveMap] No GPS data available in database');
       }
 
-      // Add inactive buses (don't assign GPS to them — GPS belongs to active trips/orphan pin)
-      const inactiveBuses = (allBuses || [])
-        .filter((bus: any) => bus.status !== 'active' || !activeTrips?.some((t: any) => t.bus_id === bus.id))
-        .map((bus: any) => ({
-          id: bus.id,
-          plate: bus.plate_number,
-          route: bus.route,
-          lat: 8.429,
-          lng: 124.762,
-          passengers: 0,
-          status: bus.status === 'maintenance' ? 'maintenance' : 'idle',
-          locationSource: 'fallback',
-          locationUpdatedAt: null,
-          busId: bus.id
+      // ── Inactive buses (no GPS) ──────────────────────────────────────────
+      const activeTripBusIds = new Set(activeTrips.map((t: any) => t.bus_id));
+      const inactiveBuses: BusData[] = allBuses
+        .filter((b: any) => !activeTripBusIds.has(b.id))
+        .map((b: any) => ({
+          id: b.id, plate: b.plate_number, route: b.route,
+          lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1],
+          passengers: 0, status: b.status === 'maintenance' ? 'maintenance' : 'idle',
+          locationSource: 'fallback', locationUpdatedAt: null,
+          busId: b.id, tripId: null,
         }));
 
-      // Fetch the latest passenger count per trip from passenger_counts
-      // Use ai_count (set by Pi's YOLOv8n) if available, else fall back to count
-      const tripIds = (activeTrips || []).map((t: any) => t.id).filter(Boolean);
+      // ── Passenger counts — single combined query by trip OR bus ──────────
+      const tripIds  = activeTrips.map((t: any) => t.id).filter(Boolean);
+      const busIds   = [...busMarkers.map(b => b.busId), ...gpsPins.map(p => p.busId)].filter(Boolean) as string[];
+
       let totalPassengers = 0;
-      const latestCountPerTrip: Record<string, number> = {};
-
-      if (tripIds.length > 0) {
-        const { data: passengerCounts } = await (supabase
+      if (tripIds.length > 0 || busIds.length > 0) {
+        // Fetch once, deduplicate by trip first then bus
+        const { data: pcData } = await (supabase
           .from('passenger_counts')
-          .select('trip_id, count, ai_count, recorded_at')
-          .in('trip_id', tripIds)
-          .order('recorded_at', { ascending: false }) as any);
+          .select('trip_id, bus_id, count, ai_count, recorded_at')
+          .or(
+            [
+              tripIds.length ? `trip_id.in.(${tripIds.join(',')})` : '',
+              busIds.length  ? `bus_id.in.(${busIds.join(',')})` : '',
+            ].filter(Boolean).join(',')
+          )
+          .order('recorded_at', { ascending: false })
+          .limit(50) as any);
 
-        // Keep only the latest count per trip_id
-        (passengerCounts || []).forEach((pc: any) => {
-          if (pc.trip_id && latestCountPerTrip[pc.trip_id] === undefined) {
-            // Prefer ai_count if set, else use count
-            latestCountPerTrip[pc.trip_id] = pc.ai_count ?? pc.count ?? 0;
-          }
-        });
+        const perTrip: Record<string, number> = {};
+        const perBus:  Record<string, number> = {};
+        for (const pc of (pcData || [])) {
+          if (pc.trip_id && perTrip[pc.trip_id] === undefined) perTrip[pc.trip_id] = pc.ai_count ?? pc.count ?? 0;
+          if (pc.bus_id  && perBus[pc.bus_id]   === undefined) perBus[pc.bus_id]   = pc.ai_count ?? pc.count ?? 0;
+        }
+
+        for (const bus of busMarkers) {
+          const c = perTrip[bus.tripId!] ?? perBus[bus.busId!] ?? 0;
+          bus.passengers = c; totalPassengers += c;
+        }
+        for (const pin of gpsPins) {
+          pin.passengers = perBus[pin.busId!] ?? 0;
+        }
       }
 
-      // Also fetch by bus_id if that column exists (sys-admin extended schema)
-      const allBusIds = [
-        ...(activeTrips || []).map((t: any) => t.bus_id),
-        ...gpsPins.map((p: any) => p.busId)
-      ].filter(Boolean);
+      setLatestGps(latestAny);
+      setBuses([...busMarkers, ...gpsPins, ...inactiveBuses]);
 
-      const latestCountPerBus: Record<string, number> = {};
-      if (allBusIds.length > 0) {
-        const { data: busPassengerCounts } = await (supabase
-          .from('passenger_counts')
-          .select('bus_id, count, ai_count, recorded_at')
-          .in('bus_id', allBusIds)
-          .order('recorded_at', { ascending: false }) as any);
-
-        (busPassengerCounts || []).forEach((pc: any) => {
-          if (pc.bus_id && latestCountPerBus[pc.bus_id] === undefined) {
-            latestCountPerBus[pc.bus_id] = pc.ai_count ?? pc.count ?? 0;
-          }
-        });
-      }
-
-      // Apply counts to bus markers — trip match first, then bus_id match
-      busMarkers.forEach((bus: any) => {
-        const count = latestCountPerTrip[bus.tripId]
-          ?? latestCountPerBus[bus.busId]
-          ?? 0;
-        bus.passengers = count;
-        totalPassengers += count;
-      });
-
-      // Apply counts to GPS pins via bus_id
-      gpsPins.forEach((pin: any) => {
-        pin.passengers = latestCountPerBus[pin.busId] ?? 0;
-      });
-
-      console.log('[LiveMap] Bus markers:', busMarkers.map((b: any) => ({ plate: b.plate, lat: b.lat, lng: b.lng, source: b.locationSource })));
-      console.log('[LiveMap] GPS pins:', gpsPins.map((b: any) => ({ lat: b.lat, lng: b.lng })));
-
-      setBuses([...busMarkers, ...gpsPins, ...inactiveBuses] as any);
-      setLatestGps(latestGpsAny);
-
-      // Calculate stats
-      const uniqueRoutes = [...new Set((allBuses || []).map((b: any) => b.route))];
-      const activeBusesCount = (allBuses || []).filter((b: any) => b.status === 'active').length;
-      const maintenanceBusesCount = (allBuses || []).filter((b: any) => b.status === 'maintenance').length;
-
+      // ── Stats ─────────────────────────────────────────────────────────────
+      const uniqueRoutes = [...new Set(allBuses.map((b: any) => b.route as string))];
       setStats({
         totalPassengers,
-        activeBuses: activeBusesCount,
-        totalRoutes: uniqueRoutes.length,
-        maintenanceBuses: maintenanceBusesCount
+        activeBuses:      allBuses.filter((b: any) => b.status === 'active').length,
+        totalRoutes:      uniqueRoutes.length,
+        maintenanceBuses: allBuses.filter((b: any) => b.status === 'maintenance').length,
       });
 
+      // ── Route polylines — use cache, only fetch once ──────────────────────
       const routeColors = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ef4444'];
-      
-      // Generate route coordinates for unique routes
-      const routeCoordsMap: Record<string, [number, number][]> = {};
-      
-      // For demo purposes, use predefined coordinates for major routes
-      const predefinedRoutes: Record<string, { start: [number, number]; end: [number, number] }> = {
-        'Manolo Fortich - Agora': {
-          start: [8.367004436125404, 124.86562729876327],
-          end: [8.491303183117974, 124.65757370963438]
-        },
-        'Manolo Fortich - Cagayan de Oro': {
-          start: [8.367004436125404, 124.86562729876327],
-          end: [8.491303183117974, 124.65757370963438]
-        }
-      };
-      
-      // Always add the main route regardless of database route names
-      const mainRouteCoords = await fetchRouteCoordinates(
-        [8.367004436125404, 124.86562729876327],
-        [8.491303183117974, 124.65757370963438]
-      );
-      routeCoordsMap['Manolo Fortich - Agora'] = mainRouteCoords;
-      
-      // Try to match database routes with predefined routes (case-insensitive)
+      const coordsMap: Record<string, [number, number][]> = {};
+      coordsMap['Manolo Fortich - Agora'] = await fetchRoute(MAIN_ROUTE.start, MAIN_ROUTE.end);
       for (const route of uniqueRoutes) {
-        const routeLower = route.toLowerCase();
-        const predefinedKey = Object.keys(predefinedRoutes).find(
-          key => key.toLowerCase() === routeLower
-        );
-        
-        if (predefinedKey) {
-          const predefined = predefinedRoutes[predefinedKey];
-          const coords = await fetchRouteCoordinates(predefined.start, predefined.end);
-          routeCoordsMap[route] = coords;
-        }
+        if (!coordsMap[route]) coordsMap[route] = coordsMap['Manolo Fortich - Agora'];
       }
-      
-      setRouteCoordinates(routeCoordsMap);
-      
-      // Always include the main route in the routes list
-      const routesToDisplay = uniqueRoutes.length > 0 
-        ? uniqueRoutes 
-        : ['Manolo Fortich - Agora'];
-      
-      setRoutes(routesToDisplay.map((route: any, index: number) => ({
-        id: index + 1,
-        name: route,
-        color: routeColors[index % routeColors.length],
-        path: routeCoordsMap[route] || routeCoordsMap['Manolo Fortich - Agora'] || []
-      })));
+      setRouteCoords(coordsMap);
+      const display = uniqueRoutes.length > 0 ? uniqueRoutes : ['Manolo Fortich - Agora'];
+      setRoutes(display.map((r, i) => ({ id: i + 1, name: r, color: routeColors[i % routeColors.length], path: coordsMap[r] || [] })));
 
-    } catch (error) {
-      console.error('Error fetching live map data:', error);
+    } catch (err) {
+      console.error('[LiveMap] fetch error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const BusMarker = ({ bus }: { bus: any }) => {
-    // Use green pulsing icon for live GPS markers
-    const isGpsMarker = bus.id === 'gps-live';
-    const markerIcon = isGpsMarker ? gpsIcon : undefined;
-    // For active buses/GPS pins, use the live WebSocket count (same as Video Monitoring)
-    const displayCount = bus.status === 'active' ? livePassengerCount : bus.passengers;
+  const scheduleFetch = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchLiveMapData, DEBOUNCE_MS);
+  }, [fetchLiveMapData]);
 
-    return (
-      <Marker position={[bus.lat, bus.lng]} icon={markerIcon}>
-        <Popup>
-          <div className="p-2">
-            <h3 className="font-bold text-gray-800">{bus.plate}</h3>
-            <p className="text-sm text-gray-600">{bus.route}</p>
-            <p className="text-xs text-gray-700 mt-2">
-              {Number(bus.lat).toFixed(6)}, {Number(bus.lng).toFixed(6)}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Source: {bus.locationSource || 'fallback'}
-            </p>
-            {bus.locationUpdatedAt && (
-              <p className="text-xs text-gray-500">
-                Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
-              </p>
-            )}
-            <div className="flex items-center gap-2 mt-2">
-              <Users size={16} className="text-orange-500" />
-              <span className="text-sm font-medium">{displayCount} passenger{displayCount !== 1 ? 's' : ''}</span>
-            </div>
-            <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-              {bus.status}
-            </span>
-          </div>
-        </Popup>
-      </Marker>
-    );
-  };
+  useEffect(() => {
+    fetchLiveMapData();
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-white text-3xl font-bold mb-2">Live Map</h1>
-          <p className="text-white/60">Loading GPS data...</p>
-        </div>
-      </div>
-    );
-  }
+    const tripSub = supabase.channel('lm-trips')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, scheduleFetch)
+      .subscribe();
 
-  // Center map on GPS data if available, otherwise use first bus or default
-  const center: [number, number] = latestGps
-    ? [latestGps.lat, latestGps.lng]
-    : buses.length > 0 && Number.isFinite(buses[0].lat)
-    ? [buses[0].lat, buses[0].lng]
-    : [8.429, 124.762];
+    const gpsSub = supabase.channel('lm-gps')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gps_locations' }, scheduleFetch)
+      .subscribe();
 
-  console.log('[LiveMap] Map center:', center, 'latestGps:', latestGps);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      tripSub.unsubscribe();
+      gpsSub.unsubscribe();
+    };
+  }, [fetchLiveMapData, scheduleFetch]);
+
+  const center = useMemo<[number, number]>(
+    () => latestGps ? [latestGps.lat, latestGps.lng] : DEFAULT_CENTER,
+    [latestGps]
+  );
+
+  const allRouteCoords = useMemo(
+    () => Object.values(routeCoords).flat() as [number, number][],
+    [routeCoords]
+  );
+
+  if (loading) return (
+    <div className="space-y-6">
+      <h1 className="text-white text-3xl font-bold">Live Map</h1>
+      <p className="text-white/60">Loading GPS data…</p>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -457,172 +323,87 @@ const LiveMap = () => {
         <p className="text-white/60">Real-time GPS tracking of all buses</p>
         {latestGps && (
           <p className="text-white/40 text-sm mt-1">
-            Last GPS update: {new Date(latestGps.recordedAt).toLocaleString()} 
-            {' • '} 
-            Coordinates: {latestGps.lat.toFixed(6)}, {latestGps.lng.toFixed(6)}
+            Last update: {new Date(latestGps.recordedAt).toLocaleString()} · {latestGps.lat.toFixed(6)}, {latestGps.lng.toFixed(6)}
           </p>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <SummaryCard 
-          title="Total Passengers" 
-          value={livePassengerCount} 
-          icon={Users} 
-          color="bg-blue-500" 
-        />
-        <SummaryCard 
-          title="Active Buses" 
-          value={stats.activeBuses} 
-          icon={Bus} 
-          color="bg-green-500" 
-        />
-        <SummaryCard 
-          title="Total Routes" 
-          value={stats.totalRoutes} 
-          icon={Navigation} 
-          color="bg-purple-500" 
-        />
-        <SummaryCard 
-          title="Maintenance" 
-          value={stats.maintenanceBuses} 
-          icon={AlertTriangle} 
-          color="bg-yellow-500" 
-        />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <SummaryCard title="Total Passengers" value={livePassengerCount} icon={Users}        color="bg-blue-500"   />
+        <SummaryCard title="Active Buses"      value={stats.activeBuses}  icon={Bus}          color="bg-green-500"  />
+        <SummaryCard title="Total Routes"      value={stats.totalRoutes}  icon={Navigation}   color="bg-purple-500" />
+        <SummaryCard title="Maintenance"       value={stats.maintenanceBuses} icon={AlertTriangle} color="bg-yellow-500" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3">
           <div className="glass-card p-4 h-[600px]">
-            <MapContainer 
-              center={center} 
-              zoom={13} 
-              style={{ height: '100%', width: '100%' }}
-              dragging={false}
-              scrollWheelZoom={false}
-              doubleClickZoom={false}
-              touchZoom={false}
-            >
+            <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }}
+              dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false}>
               <MapRecenter center={center} />
-              {Object.values(routeCoordinates).flat().length > 0 && (
-                <MapRouteFitter coordinates={Object.values(routeCoordinates).flat()} />
+              {allRouteCoords.length > 0 && (
+                <MapRouteFitter coordinates={allRouteCoords} />
               )}
-              <TileLayer
-                attribution=""
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              {routes.map((route: any) => (
-                route.path.length > 0 && (
-                  <Polyline
-                    key={route.id}
-                    positions={route.path}
-                    color={route.color}
-                    weight={4}
-                    opacity={0.7}
-                  />
-                )
+              <TileLayer attribution="" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              {routes.map(r => r.path.length > 0 && (
+                <Polyline key={r.id} positions={r.path} color={r.color} weight={4} opacity={0.7} />
               ))}
-              {buses.map((bus: any) => (
-                <BusMarker key={bus.id} bus={bus} />
+              {buses.map(bus => (
+                <BusMarker key={bus.id} bus={bus} liveCount={livePassengerCount} />
               ))}
             </MapContainer>
           </div>
         </div>
 
         <div className="space-y-4">
-          {/* GPS Status Card */}
           {latestGps && (
-            <div className="glass-card p-6 bg-gradient-to-br from-green-500/10 to-green-600/5 border border-green-500/20">
-              <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />
-                Live GPS Active
+            <div className="glass-card p-4 border border-green-500/20">
+              <h3 className="text-white font-bold mb-3 flex items-center gap-2 text-sm">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" /> Live GPS
               </h3>
-              <div className="space-y-2 text-sm">
+              <div className="space-y-1 text-xs">
+                {[['Lat', latestGps.lat.toFixed(6)], ['Lng', latestGps.lng.toFixed(6)], ['Source', latestGps.source]].map(([k, v]) => (
+                  <div key={k} className="flex justify-between">
+                    <span className="text-white/50">{k}:</span>
+                    <span className="text-white font-mono">{v}</span>
+                  </div>
+                ))}
                 <div className="flex justify-between">
-                  <span className="text-white/60">Latitude:</span>
-                  <span className="text-white font-mono">{latestGps.lat.toFixed(6)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/60">Longitude:</span>
-                  <span className="text-white font-mono">{latestGps.lng.toFixed(6)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/60">Source:</span>
-                  <span className="text-white">{latestGps.source}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/60">Last Update:</span>
-                  <span className="text-white text-xs">
-                    {new Date(latestGps.recordedAt).toLocaleTimeString()}
-                  </span>
+                  <span className="text-white/50">Updated:</span>
+                  <span className="text-white">{new Date(latestGps.recordedAt).toLocaleTimeString()}</span>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="glass-card p-6">
-            <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
-              <Bus className="text-orange-400" />
-              Active Buses
-            </h3>
-            <div className="space-y-3">
-              {buses.length > 0 ? (
-                buses.map((bus: any) => (
-                  <div key={bus.id} className={`bg-white/5 p-3 rounded-xl ${bus.id === 'gps-live' ? 'border-2 border-green-400/50' : ''}`}>
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="text-white font-medium text-sm">{bus.plate}</p>
-                        <p className="text-white/60 text-xs">{bus.route}</p>
-                      </div>
-                      <span className={`w-2 h-2 rounded-full ${bus.status === 'active' ? 'bg-green-400' : 'bg-gray-400'}`} />
+          <div className="glass-card p-4">
+            <h3 className="text-white font-bold mb-3 flex items-center gap-2"><Bus className="text-orange-400 w-4 h-4" /> Buses</h3>
+            <div className="space-y-2">
+              {buses.length > 0 ? buses.map(bus => (
+                <div key={bus.id} className={`bg-white/5 p-2.5 rounded-xl ${bus.id === 'gps-live' ? 'border border-green-400/40' : ''}`}>
+                  <div className="flex justify-between items-start mb-1">
+                    <div>
+                      <p className="text-white font-medium text-xs">{bus.plate}</p>
+                      <p className="text-white/50 text-xs">{bus.route}</p>
                     </div>
-                    <div className="flex items-center gap-2 text-white/70 text-xs">
-                        <Users size={14} />
-                        <span>{bus.status === 'active' ? livePassengerCount : bus.passengers} passenger{(bus.status === 'active' ? livePassengerCount : bus.passengers) !== 1 ? 's' : ''}</span>
-                      </div>
-                    {bus.locationSource && (
-                      <div className="text-white/50 text-xs mt-1">
-                        📍 {bus.locationSource}
-                      </div>
-                    )}
+                    <span className={`w-2 h-2 rounded-full mt-1 ${bus.status === 'active' ? 'bg-green-400' : 'bg-gray-400'}`} />
                   </div>
-                ))
-              ) : (
-                <p className="text-white/60 text-sm">No active buses</p>
-              )}
-            </div>
-          </div>
-
-          <div className="glass-card p-6">
-            <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
-              <Navigation className="text-orange-400" />
-              Routes
-            </h3>
-            <div className="space-y-3">
-              {routes.map((route: any) => (
-                <div key={route.id} className="flex items-center gap-3">
-                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: route.color }} />
-                  <span className="text-white/70 text-sm">{route.name}</span>
+                  <div className="flex items-center gap-1 text-white/60 text-xs">
+                    <Users size={12} />
+                    <span>{bus.status === 'active' ? livePassengerCount : bus.passengers} pax</span>
+                  </div>
                 </div>
-              ))}
+              )) : <p className="text-white/50 text-sm">No active buses</p>}
             </div>
           </div>
 
-          <div className="glass-card p-6">
-            <h3 className="text-white text-lg font-bold mb-4">Map Legend</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-400" />
-                <span className="text-white/70">Active Bus</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-gray-400" />
-                <span className="text-white/70">Idle Bus</span>
-              </div>
-              {routes.map((route: any) => (
-                <div key={route.id} className="flex items-center gap-2">
-                  <div className="w-6 h-1 rounded" style={{ backgroundColor: route.color }} />
-                  <span className="text-white/70">{route.name}</span>
+          <div className="glass-card p-4">
+            <h3 className="text-white font-bold mb-3 flex items-center gap-2 text-sm"><Navigation className="text-orange-400 w-4 h-4" /> Routes</h3>
+            <div className="space-y-2">
+              {routes.map(r => (
+                <div key={r.id} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
+                  <span className="text-white/70 text-xs">{r.name}</span>
                 </div>
               ))}
             </div>
@@ -631,6 +412,15 @@ const LiveMap = () => {
       </div>
     </div>
   );
+};
+
+// Defined after LiveMap to avoid hoisting issues with gpsIcon
+const MapRouteFitter = ({ coordinates }: { coordinates: [number, number][] }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (coordinates.length > 0) map.fitBounds(L.latLngBounds(coordinates), { padding: [50, 50] });
+  }, [coordinates, map]);
+  return null;
 };
 
 export default LiveMap;

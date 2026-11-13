@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
 import { StaffUser } from '../types';
@@ -19,11 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<StaffUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    checkUser();
-  }, []);
-
-  const checkUser = async () => {
+  const checkUser = useCallback(async () => {
     try {
       // Check localStorage for session
       const sessionData = localStorage.getItem('operator_session');
@@ -61,14 +57,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const signOut = async () => {
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
+
+  const signOut = useCallback(async () => {
     localStorage.removeItem('operator_session');
     setUser(null);
-  };
+  }, []);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     if (user) {
       const { data, error } = await supabase
         .from('staff_users')
@@ -82,16 +82,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(data);
       }
     }
-  };
+  }, [user]);
 
-  const signIn = (userData: StaffUser) => {
+  const signIn = useCallback((userData: StaffUser) => {
     setUser(userData);
     // Store minimal session data: only userId and login time
     localStorage.setItem('operator_session', JSON.stringify({
       userId: userData.id,
       loginTime: Date.now()
     }));
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, signOut, refreshUser, signIn }}>

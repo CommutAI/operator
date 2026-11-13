@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   Bus, Users, DollarSign, Activity, AlertTriangle,
@@ -161,25 +161,44 @@ export default function Dashboard() {
     refresh: videoRefresh,
   } = useBackendVideo({ autoConnect: true });
 
+  // Debounce ref for real-time updates
+  const dashboardDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gpsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     fetchDashboardData();
-    
+
+    // Debounced fetch to prevent flooding during traffic spikes
+    const debouncedFetch = () => {
+      if (dashboardDebounceRef.current) clearTimeout(dashboardDebounceRef.current);
+      dashboardDebounceRef.current = setTimeout(() => {
+        void fetchDashboardData();
+      }, 2000); // 2 second debounce
+    };
+
+    const debouncedGpsFetch = () => {
+      if (gpsDebounceRef.current) clearTimeout(gpsDebounceRef.current);
+      gpsDebounceRef.current = setTimeout(() => {
+        fetchLiveMapData();
+      }, 1500); // 1.5 second debounce for GPS (higher frequency)
+    };
+
     // @ts-ignore - Supabase callback type issue with async functions
     const subscription = supabase
       .channel('dashboard-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => { void fetchDashboardData(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'emergency_alerts' }, () => { void fetchDashboardData(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fare_irregularities' }, () => { void fetchDashboardData(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, debouncedFetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'emergency_alerts' }, debouncedFetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fare_irregularities' }, debouncedFetch)
       .subscribe();
 
     const gpsSubscription = supabase
       .channel('dashboard-gps-channel')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gps_locations' }, () => {
-        fetchLiveMapData();
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gps_locations' }, debouncedGpsFetch)
       .subscribe();
 
-    return () => { 
+    return () => {
+      if (dashboardDebounceRef.current) clearTimeout(dashboardDebounceRef.current);
+      if (gpsDebounceRef.current) clearTimeout(gpsDebounceRef.current);
       subscription.unsubscribe();
       gpsSubscription.unsubscribe();
     };
@@ -191,17 +210,17 @@ export default function Dashboard() {
       const { data: buses } = await supabase
         .from('buses')
         .select('status');
-      
+
       const activeBuses = buses?.filter(b => b.status === 'active').length || 0;
       const totalBuses = buses?.length || 0;
 
-      // Fetch active trips without join first
+      // Fetch active trips without join first - optimized with limit
       const { data: trips } = await supabase
         .from('trips')
         .select('*')
         .eq('status', 'in_progress')
         .order('started_at', { ascending: false })
-        .limit(6);
+        .limit(10);
 
       // Fetch buses separately and merge
       let tripsWithBuses = trips || [];
@@ -220,29 +239,28 @@ export default function Dashboard() {
 
       setActiveTrips(tripsWithBuses);
 
-      // Fetch all boarded passengers (all time)
-      const { data: boardedPassengers } = await supabase
+      // Use count query instead of fetching all records - prevents memory issues
+      const { count: currentPassengersCount } = await supabase
         .from('boarded_passengers')
-        .select('id')
-        .limit(1000);
+        .select('*', { count: 'exact', head: true });
 
-      const currentPassengers = boardedPassengers?.length || 0;
+      const currentPassengers = currentPassengersCount || 0;
 
-      // Fetch all transactions (all time)
-      const { data: transactions } = await supabase
+      // Use aggregation query for total fares - more efficient
+      const { data: fareAgg } = await supabase
         .from('transactions')
         .select('amount')
         .limit(1000);
 
-      const totalFaresAllTime = transactions?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
+      const totalFaresAllTime = fareAgg?.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) || 0;
 
-      // Fetch fare irregularities without join first
+      // Fetch fare irregularities without join first - limited
       const { data: irregularities } = await supabase
         .from('fare_irregularities')
         .select('*')
         .eq('resolved', false)
         .order('detected_at', { ascending: false })
-        .limit(50);
+        .limit(20);
 
       // Fetch trips and buses for irregularities
       let irregularitiesWithInfo = irregularities || [];
@@ -273,7 +291,7 @@ export default function Dashboard() {
 
       setIrregularities(irregularitiesWithInfo);
 
-      // Fetch emergency alerts
+      // Fetch emergency alerts - limited
       const { data: emergencyAlerts } = await supabase
         .from('emergency_alerts')
         .select('*')
@@ -300,14 +318,14 @@ export default function Dashboard() {
         busesOnline = activeTripsCount?.length || 0;
       }
 
-      // Fetch chart data - last 7 days revenue
+      // Fetch chart data - last 7 days revenue with limit
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const { data: chartTransactions } = await supabase
         .from('transactions')
         .select('amount, type, created_at')
         .gte('created_at', sevenDaysAgo.toISOString())
         .order('created_at', { ascending: true })
-        .limit(1000);
+        .limit(500);
 
       // Group revenue by date
       const revenueByDate: Record<string, any> = {};

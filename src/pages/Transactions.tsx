@@ -45,13 +45,13 @@ export default function Transactions() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [statusFilter, typeFilter, currentPage, itemsPerPage]);
+  }, [statusFilter, typeFilter, currentPage, itemsPerPage, searchTerm]);
 
   const fetchCards = async () => {
     try {
       setLoading(true);
 
-      // Get total count
+      // Build count query with filters
       let countQuery = supabase
         .from('qr_cards')
         .select('*', { count: 'exact', head: true });
@@ -64,10 +64,15 @@ export default function Transactions() {
         countQuery = countQuery.eq('card_type', typeFilter);
       }
 
+      // Apply search filter at database level if searching
+      if (searchTerm) {
+        countQuery = countQuery.or(`card_uid.ilike.%${searchTerm}%,owner_name.ilike.%${searchTerm}%,contact_number.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+      }
+
       const { count } = await countQuery;
       setTotalCount(count || 0);
 
-      // Fetch paginated data
+      // Fetch paginated data with filters
       const { from, to } = getRange();
 
       let query = supabase
@@ -81,6 +86,11 @@ export default function Transactions() {
 
       if (typeFilter !== 'all') {
         query = query.eq('card_type', typeFilter);
+      }
+
+      // Apply search filter at database level
+      if (searchTerm) {
+        query = query.or(`card_uid.ilike.%${searchTerm}%,owner_name.ilike.%${searchTerm}%,contact_number.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
       }
 
       query = query.range(from, to);
@@ -102,21 +112,9 @@ export default function Transactions() {
     }
   };
 
-  const filteredCards = cards.filter(card => {
-    const matchesSearch =
-      card.card_uid.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      card.owner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (card.contact_number && card.contact_number.includes(searchTerm)) ||
-      (card.email && card.email.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesStatus = statusFilter === 'all' || card.status === statusFilter;
-    const matchesType = typeFilter === 'all' || card.card_type === typeFilter;
-
-    return matchesSearch && matchesStatus && matchesType;
-  });
-
-  const totalBalance = filteredCards.reduce((sum, card) => sum + Number(card.balance), 0);
-  const totalCards = filteredCards.length;
+  // Filters are now applied at database level for better performance
+  const totalBalance = cards.reduce((sum, card) => sum + Number(card.balance), 0);
+  const totalCards = cards.length;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -194,7 +192,7 @@ export default function Transactions() {
             <div>
               <p className="text-white/60 text-sm">Active Cards</p>
               <p className="text-white text-2xl font-bold">
-                {filteredCards.filter(c => c.status === 'active').length}
+                {cards.filter(c => c.status === 'active').length}
               </p>
             </div>
           </div>
@@ -205,7 +203,7 @@ export default function Transactions() {
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-white">QR Cards</h2>
-          <span className="text-white/60">{filteredCards.length} records</span>
+          <span className="text-white/60">{cards.length} records</span>
         </div>
 
         {/* Search Bar and Filters */}
@@ -253,7 +251,7 @@ export default function Transactions() {
           <div className="text-center py-8">
             <div className="text-white">Loading cards...</div>
           </div>
-        ) : filteredCards.length === 0 ? (
+        ) : cards.length === 0 ? (
           <div className="text-center py-8">
             <Receipt className="text-white/20 mx-auto mb-2" size={48} />
             <p className="text-white/40">No cards found</p>
@@ -275,7 +273,7 @@ export default function Transactions() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCards.map((card) => (
+                  {cards.map((card) => (
                     <tr key={card.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                       <td className="py-4 px-4 text-white/80 font-mono text-sm">{card.card_uid}</td>
                       <td className="py-4 px-4 text-white font-medium">{card.owner_name}</td>
