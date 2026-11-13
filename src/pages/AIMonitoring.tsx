@@ -359,13 +359,13 @@ export default function AIMonitoring() {
           </div>
         </div>
 
-        {/* Split Pane Body (Left: 58% Video Stream, Right: 42% AI Telematics) */}
+        {/* Split Pane Body (Left: Compact Video Stream, Right: AI Telematics Grid) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-white/10 items-stretch">
-          {/* Left Pane (58%): Live Camera Stream */}
-          <div className="lg:col-span-7 p-4 lg:p-5 flex flex-col justify-center bg-black/30">
+          {/* Left Pane: Compact 4:3 Live Camera Stream */}
+          <div className="lg:col-span-5 p-3.5 sm:p-4 flex flex-col justify-center items-center bg-black/30">
             <div
               ref={videoContainerRef}
-              className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-xl overflow-hidden border border-white/15 shadow-xl flex items-center justify-center group"
+              className="relative w-full max-w-[420px] aspect-[4/3] max-h-[315px] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-xl overflow-hidden border border-white/15 shadow-xl flex items-center justify-center group"
             >
               <img
                 ref={videoRef}
@@ -378,24 +378,24 @@ export default function AIMonitoring() {
               {!videoStreaming && (
                 <div className="absolute inset-0 flex items-center justify-center p-6 bg-gradient-to-b from-black/80 via-black/90 to-black/95">
                   <div className="text-center max-w-sm">
-                    <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-2.5 shadow-inner">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-2 shadow-inner">
                       {videoConnectionStatus === 'connecting' ? (
-                        <RefreshCw className="w-7 h-7 text-orange-400 animate-spin" />
+                        <RefreshCw className="w-6 h-6 text-orange-400 animate-spin" />
                       ) : (
-                        <Video className="w-7 h-7 text-white/30" />
+                        <Video className="w-6 h-6 text-white/30" />
                       )}
                     </div>
-                    <p className="text-white font-semibold text-sm mb-0.5">
+                    <p className="text-white font-semibold text-xs sm:text-sm mb-0.5">
                       {videoConnectionStatus === 'connecting' ? 'Connecting to camera…' : 'Camera Stream Offline'}
                     </p>
-                    <p className="text-white/40 text-[11px] mb-3 leading-relaxed">
+                    <p className="text-white/40 text-[10px] sm:text-[11px] mb-2.5 leading-relaxed">
                       {videoConnectionMessage || 'Waiting for live frames from Raspberry Pi camera.'}
                     </p>
                     <button
                       onClick={videoRefresh}
-                      className="px-3.5 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 mx-auto active:scale-95"
+                      className="px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 mx-auto active:scale-95"
                     >
-                      <RefreshCw size={12} />
+                      <RefreshCw size={11} />
                       Reconnect Feed
                     </button>
                   </div>
@@ -403,9 +403,9 @@ export default function AIMonitoring() {
               )}
 
               {/* Top HUD Overlay */}
-              <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between pointer-events-none z-10">
+              <div className="absolute top-2 inset-x-2 flex items-center justify-between pointer-events-none z-10">
                 <div className="flex items-center gap-1.5">
-                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold backdrop-blur-md flex items-center gap-1 shadow-lg border ${
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold backdrop-blur-md flex items-center gap-1 shadow-lg border ${
                     videoStreaming
                       ? 'bg-red-500/85 text-white border-red-400/40'
                       : 'bg-black/70 text-white/60 border-white/10'
@@ -413,14 +413,14 @@ export default function AIMonitoring() {
                     <span className={`w-1.5 h-1.5 rounded-full ${videoStreaming ? 'bg-white animate-pulse' : 'bg-red-400'}`} />
                     {videoStreaming ? 'LIVE' : 'OFFLINE'}
                   </span>
-                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white/90 text-[11px] px-2 py-0.5 rounded-full font-medium shadow-md">
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white/90 text-[10px] px-2 py-0.5 rounded-full font-medium shadow-md">
                     Bus #1 • Real-time AI
                   </span>
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white text-[11px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-lg">
-                    <Users size={12} className="text-orange-400" />
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-lg">
+                    <Users size={11} className="text-orange-400" />
                     <span>{videoPassengerCount} Detected</span>
                   </span>
                   <button
@@ -428,100 +428,103 @@ export default function AIMonitoring() {
                     className="pointer-events-auto bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/10 text-white/80 hover:text-white p-1 rounded-full transition-all"
                     title="Fullscreen"
                   >
-                    <Maximize2 size={12} />
+                    <Maximize2 size={11} />
                   </button>
                 </div>
               </div>
 
               {/* Bottom HUD Overlay */}
-              <div className="absolute bottom-2.5 inset-x-2.5 flex items-center justify-between pointer-events-none z-10 text-[10px] text-white/80">
-                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2 py-0.5 rounded-full flex items-center gap-1.5 shadow-md">
-                  <Activity size={11} className="text-emerald-400" />
+              <div className="absolute bottom-2 inset-x-2 flex items-center justify-between pointer-events-none z-10 text-[9px] sm:text-[10px] text-white/80">
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+                  <Activity size={10} className="text-emerald-400" />
                   <span className="font-mono">AI: YOLOv8n</span>
                   <span className="text-white/40">•</span>
                   <span className="text-white/60">640×480 (4:3)</span>
                 </div>
                 <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
-                  <Wifi size={11} className={videoStreaming ? 'text-green-400' : 'text-white/40'} />
+                  <Wifi size={10} className={videoStreaming ? 'text-green-400' : 'text-white/40'} />
                   <span className="font-medium capitalize">{videoStreaming ? '30 FPS' : videoConnectionStatus}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Pane (42%): AI Telematics & Controls */}
-          <div className="lg:col-span-5 p-4 lg:p-5 flex flex-col justify-between gap-3 bg-white/[0.01]">
-            {/* Top Section: AI Passenger Counter Hero */}
-            <div className="glass-card p-3.5 sm:p-4 rounded-xl border border-white/10">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Users size={15} className="text-orange-400" />
-                  <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">AI Passenger Counter</span>
+          {/* Right Pane: Compact AI Telematics & Controls */}
+          <div className="lg:col-span-7 p-3.5 sm:p-4 lg:p-5 flex flex-col justify-center gap-3 bg-white/[0.01]">
+            {/* Row 1: AI Passenger Counter Hero + Detection Pipeline */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Passenger Counter Card */}
+              <div className="glass-card p-3 sm:p-3.5 rounded-xl border border-white/10 flex flex-col justify-between min-h-[105px]">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Users size={14} className="text-orange-400" />
+                    <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">AI Passenger Counter</span>
+                  </div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Real-time
+                  </span>
                 </div>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Real-time Active
-                </span>
+
+                <div className="flex items-baseline justify-between mb-1.5">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
+                    <span className="text-white/50 text-xs font-medium">passenger{videoPassengerCount === 1 ? '' : 's'} on board</span>
+                  </div>
+                  <span className="text-[11px] text-white/50 font-medium">
+                    {30 - videoPassengerCount} seats left
+                  </span>
+                </div>
+
+                <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-orange-400 transition-all duration-500"
+                    style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
+                  />
+                </div>
               </div>
 
-              <div className="flex items-baseline justify-between mb-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
-                  <span className="text-white/50 text-xs sm:text-sm font-medium">passenger{videoPassengerCount === 1 ? '' : 's'} on board</span>
+              {/* Detection Pipeline Info Card */}
+              <div className="glass-card p-3 sm:p-3.5 rounded-xl border border-white/10 flex flex-col justify-between min-h-[105px]">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Activity size={14} className="text-blue-400" />
+                    <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">Detection Pipeline</span>
+                  </div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                    Real-time
+                  </span>
                 </div>
-                <span className="text-xs text-white/50 font-medium">
-                  {30 - videoPassengerCount} seats available
-                </span>
-              </div>
-
-              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-orange-400 transition-all duration-500"
-                  style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
-                />
+                <div>
+                  <div className="text-white font-semibold text-xs sm:text-sm">YOLOv8 Nano Neural Net</div>
+                  <div className="text-white/50 text-[11px] mt-0.5">Automated Bounding & Occupancy Tally</div>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-white/60 pt-1 border-t border-white/5">
+                  <span className="text-emerald-400 font-medium">Conf &gt; 0.50</span>
+                  <span>•</span>
+                  <span>30 FPS</span>
+                  <span>•</span>
+                  <span>640×480 (4:3)</span>
+                </div>
               </div>
             </div>
 
-            {/* Middle Section: Detection Pipeline Info */}
-            <div className="glass-card p-3 sm:p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <Activity size={14} className="text-blue-400" />
-                  <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">Detection Pipeline</span>
-                </div>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                  Real-time Active
-                </span>
-              </div>
-              <div>
-                <div className="text-white font-semibold text-xs sm:text-sm">YOLOv8 Nano Neural Network</div>
-                <div className="text-white/50 text-[11px] mt-0.5">Automated Bounding & Occupancy Tally</div>
-              </div>
-              <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-white/60 pt-1.5 mt-1 border-t border-white/5">
-                <span className="text-emerald-400 font-medium">Confidence &gt; 0.50</span>
-                <span>•</span>
-                <span>30 FPS</span>
-                <span>•</span>
-                <span>640×480 (4:3)</span>
-              </div>
-            </div>
-
-            {/* Bottom Section: 4 AI Specs Grid */}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
-                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+            {/* Row 2: 4 AI Specs Grid in a Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+              <div className="glass-card p-2.5 rounded-xl border border-white/10 flex flex-col justify-between min-h-[64px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-0.5">
                   <Activity size={12} className="text-blue-400 shrink-0" />
                   <span className="truncate">Detection Model</span>
                 </div>
                 <div>
                   <div className="text-white font-semibold text-xs sm:text-sm truncate">YOLOv8n ONNX</div>
-                  <div className="text-emerald-400 text-[10px] mt-0.5">Confidence &gt; 0.50</div>
+                  <div className="text-emerald-400 text-[10px] mt-0.5 truncate">Confidence &gt; 0.50</div>
                 </div>
               </div>
 
-              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
-                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+              <div className="glass-card p-2.5 rounded-xl border border-white/10 flex flex-col justify-between min-h-[64px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-0.5">
                   <Video size={12} className="text-purple-400 shrink-0" />
                   <span className="truncate">Aspect & Res</span>
                 </div>
@@ -531,8 +534,8 @@ export default function AIMonitoring() {
                 </div>
               </div>
 
-              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
-                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+              <div className="glass-card p-2.5 rounded-xl border border-white/10 flex flex-col justify-between min-h-[64px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-0.5">
                   <Clock size={12} className="text-green-400 shrink-0" />
                   <span className="truncate">Inference Time</span>
                 </div>
@@ -542,8 +545,8 @@ export default function AIMonitoring() {
                 </div>
               </div>
 
-              <div className="glass-card p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col justify-between min-h-[68px]">
-                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-1">
+              <div className="glass-card p-2.5 rounded-xl border border-white/10 flex flex-col justify-between min-h-[64px]">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px] mb-0.5">
                   <CheckCircle size={12} className="text-orange-400 shrink-0" />
                   <span className="truncate">Feed Pipeline</span>
                 </div>
