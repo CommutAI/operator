@@ -52,7 +52,7 @@ async function fetchRoute(start: [number, number], end: [number, number]): Promi
       // Evict oldest if cache is full
       if (routeCache.size >= ROUTE_CACHE_MAX_SIZE) {
         const firstKey = routeCache.keys().next().value;
-        routeCache.delete(firstKey);
+        if (firstKey !== undefined) routeCache.delete(firstKey);
       }
       routeCache.set(key, coords);
       return coords;
@@ -61,7 +61,7 @@ async function fetchRoute(start: [number, number], end: [number, number]): Promi
   const fallback: [number, number][] = [start, end];
   if (routeCache.size >= ROUTE_CACHE_MAX_SIZE) {
     const firstKey = routeCache.keys().next().value;
-    routeCache.delete(firstKey);
+    if (firstKey !== undefined) routeCache.delete(firstKey);
   }
   routeCache.set(key, fallback);
   return fallback;
@@ -142,7 +142,7 @@ const LiveMap = () => {
     try {
       // Run all independent queries in parallel
       const [tripsRes, busesRes, gpsRes] = await Promise.all([
-        supabase.from('trips').select('id, bus_id, current_lat, current_lng, gps_updated_at, buses(id, bus_number, plate_number, route)').eq('status', 'in_progress'),
+        supabase.from('trips').select('id, bus_id, current_lat, current_lng, gps_updated_at, buses!fk_trips_bus_id(id, bus_number, plate_number, route)').eq('status', 'in_progress'),
         supabase.from('buses').select('id, bus_number, plate_number, route, status'),
         (supabase.from('gps_locations').select('trip_id, latitude, longitude, source, recorded_at').order('recorded_at', { ascending: false }).limit(10) as any),
       ]);

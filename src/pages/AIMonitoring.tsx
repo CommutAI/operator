@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Users, Video, Activity, Clock, ChevronLeft, ChevronRight, ArrowUpDown, CheckCircle, XCircle, Filter, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Users, Video, Activity, Clock, ChevronLeft, ChevronRight, ArrowUpDown, CheckCircle, XCircle, Filter, RefreshCw, Wifi, Maximize2 } from 'lucide-react';
 import { useBackendVideo } from '../hooks/useBackendVideo';
 
 interface DetectionEvent {
@@ -47,6 +47,16 @@ export default function AIMonitoring() {
     videoRef,
     refresh: videoRefresh,
   } = useBackendVideo({ autoConnect: true });
+
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const toggleFullscreen = () => {
+    if (!videoContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      videoContainerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
 
   const totalPages = Math.ceil(
     detectionHistory.filter(item => {
@@ -325,107 +335,176 @@ export default function AIMonitoring() {
         </div>
       </div>
 
-      {/* Video Monitoring Section - Compact */}
-      <div className="glass-card p-4 border-2 border-orange-500/20">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-white/60 text-sm">Video Feed</div>
+      {/* Video Monitoring Section - Native 4:3 Camera View */}
+      <div className="glass-card p-4 lg:p-6 border-2 border-orange-500/20">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Video className="text-orange-400" size={20} />
+            <h2 className="text-lg lg:text-xl font-bold text-white">Live AI Video Feed</h2>
+          </div>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-            <span className="text-white/60 text-xs">{videoConnectionStatus}</span>
+            <span className="text-white/60 text-xs capitalize hidden sm:inline">{videoConnectionStatus}</span>
+            <button
+              onClick={videoRefresh}
+              className="bg-white/10 hover:bg-white/20 text-white p-1 rounded transition-colors"
+              title="Refresh feed"
+            >
+              <RefreshCw size={14} />
+            </button>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          {/* Video Feed */}
-          <div className="col-span-2 relative bg-black rounded-lg h-96 overflow-hidden">
-            <img
-              ref={videoRef}
-              alt="Live video feed"
-              className={`absolute inset-0 w-full h-full object-contain ${videoStreaming ? 'block' : 'hidden'}`}
-            />
-            {!videoStreaming && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <Video className="text-white/30 mx-auto mb-2" size={32} />
-                  <p className="text-white/40 text-sm">
-                    {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : videoConnectionMessage || 'Video feed unavailable'}
-                  </p>
-                  {videoConnectionStatus === 'connected' && (
-                    <p className="text-white/30 text-xs mt-2">
-                      No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.
+
+        {/* Responsive 4:3 Camera Layout + AI Telematics Panel (Tight centered layout, reduced gap) */}
+        <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-4 lg:gap-5 w-full">
+          {/* Video Feed (Native 4:3 Container) */}
+          <div className="w-full max-w-[580px] shrink-0">
+            <div
+              ref={videoContainerRef}
+              className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
+            >
+              <img
+                ref={videoRef}
+                alt="Live AI video feed"
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  videoStreaming ? 'opacity-100 block' : 'opacity-0 hidden'
+                }`}
+              />
+
+              {!videoStreaming && (
+                <div className="absolute inset-0 flex items-center justify-center p-6 bg-gradient-to-b from-black/80 via-black/90 to-black/95">
+                  <div className="text-center max-w-sm">
+                    <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-3 shadow-inner">
+                      {videoConnectionStatus === 'connecting' ? (
+                        <RefreshCw className="w-8 h-8 text-orange-400 animate-spin" />
+                      ) : (
+                        <Video className="w-8 h-8 text-white/30" />
+                      )}
+                    </div>
+                    <p className="text-white font-semibold text-base mb-1">
+                      {videoConnectionStatus === 'connecting' ? 'Connecting to camera…' : 'Camera Stream Offline'}
                     </p>
-                  )}
+                    <p className="text-white/40 text-xs mb-4 leading-relaxed">
+                      {videoConnectionMessage || 'Waiting for live frames from Raspberry Pi camera.'}
+                    </p>
+                    <button
+                      onClick={videoRefresh}
+                      className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 rounded-xl text-xs font-medium transition-all flex items-center gap-2 mx-auto active:scale-95"
+                    >
+                      <RefreshCw size={13} />
+                      Reconnect Feed
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Top HUD Overlay */}
+              <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none z-10">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 shadow-lg border ${
+                    videoStreaming
+                      ? 'bg-red-500/85 text-white border-red-400/40'
+                      : 'bg-black/70 text-white/60 border-white/10'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-white animate-pulse' : 'bg-red-400'}`} />
+                    {videoStreaming ? 'LIVE' : 'OFFLINE'}
+                  </span>
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white/90 text-xs px-2.5 py-1 rounded-full font-medium shadow-md">
+                    Bus #1 • Real-time AI
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white text-xs px-3 py-1 rounded-full font-bold flex items-center gap-1.5 shadow-lg">
+                    <Users size={13} className="text-orange-400" />
+                    <span>{videoPassengerCount} Detected</span>
+                  </span>
                   <button
-                    onClick={videoRefresh}
-                    className="mt-3 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs transition-colors"
+                    onClick={toggleFullscreen}
+                    className="pointer-events-auto bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/10 text-white/80 hover:text-white p-1.5 rounded-full transition-all"
+                    title="Fullscreen"
                   >
-                    Refresh
+                    <Maximize2 size={13} />
                   </button>
                 </div>
               </div>
-            )}
-            {videoStreaming && (
-              <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1 flex items-center gap-2">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-white text-xs font-medium">LIVE</span>
-              </div>
-            )}
-            {videoStreaming && (
-              <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1">
-                <div className="flex items-center gap-1">
-                  <Users size={12} className="text-orange-400" />
-                  <span className="text-white text-xs font-bold">{videoPassengerCount}</span>
+
+              {/* Bottom HUD Overlay */}
+              <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none z-10 text-[11px] text-white/80">
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-full flex items-center gap-2 shadow-md">
+                  <Activity size={12} className="text-emerald-400" />
+                  <span className="font-mono">AI: YOLOv8n</span>
+                  <span className="text-white/40">•</span>
+                  <span className="text-white/60">640×480 (4:3)</span>
+                </div>
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md">
+                  <Wifi size={12} className={videoStreaming ? 'text-green-400' : 'text-white/40'} />
+                  <span className="font-medium capitalize">{videoStreaming ? '30 FPS' : videoConnectionStatus}</span>
                 </div>
               </div>
-            )}
+            </div>
           </div>
-          
-          {/* Video Details Sidebar */}
-          <div className="col-span-1 space-y-3">
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Current Status</div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400' : 'bg-red-400'}`} />
-                <span className="text-white text-sm font-medium">
-                  {videoStreaming ? 'Streaming' : 'Offline'}
+
+          {/* AI Detection Controls & Stats Sidebar */}
+          <div className="w-full lg:w-[320px] xl:w-[340px] shrink-0 flex flex-col gap-3">
+            {/* Passenger Count Hero */}
+            <div className="glass-card p-4 rounded-xl border border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-white/60 text-xs font-medium uppercase tracking-wider">AI Passenger Counter</span>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Real-time Active
                 </span>
               </div>
-            </div>
-            
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Passenger Count</div>
-              <div className="flex items-center gap-2">
-                <Users size={16} className="text-orange-400" />
-                <span className="text-white text-2xl font-bold">{videoPassengerCount}</span>
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
+                <span className="text-white/50 text-sm font-medium">passenger{videoPassengerCount === 1 ? '' : 's'} on board</span>
+              </div>
+              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-orange-400 transition-all duration-500"
+                  style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
+                />
               </div>
             </div>
-            
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Connection</div>
-              <div className="text-white text-sm">
-                {videoConnectionStatus}
+
+            {/* AI Specs Grid */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <Activity size={13} className="text-blue-400" />
+                  <span>Detection Model</span>
+                </div>
+                <div className="text-white font-semibold text-sm">YOLOv8n ONNX</div>
+                <div className="text-emerald-400 text-[10px] mt-0.5">Confidence &gt; 0.50</div>
+              </div>
+
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <Video size={13} className="text-purple-400" />
+                  <span>Aspect & Res</span>
+                </div>
+                <div className="text-white font-semibold text-sm">640×480 (4:3)</div>
+                <div className="text-white/50 text-[10px] mt-0.5">Zero Pillarbox</div>
+              </div>
+
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <Clock size={13} className="text-green-400" />
+                  <span>Inference Time</span>
+                </div>
+                <div className="text-white font-semibold text-sm">~28 ms / frame</div>
+                <div className="text-white/50 text-[10px] mt-0.5">Real-time Stream</div>
+              </div>
+
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <CheckCircle size={13} className="text-orange-400" />
+                  <span>Feed Pipeline</span>
+                </div>
+                <div className="text-white font-semibold text-sm capitalize">{videoStreaming ? 'Streaming' : videoConnectionStatus}</div>
+                <div className="text-white/50 text-[10px] mt-0.5">Cloudflare Tunnel</div>
               </div>
             </div>
-            
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">AI Detection</div>
-              <div className="flex items-center gap-2">
-                <Activity size={16} className="text-blue-400" />
-                <span className="text-white text-sm font-medium">YOLOv8n</span>
-              </div>
-            </div>
-            
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Resolution</div>
-              <div className="text-white text-sm">640x480 @ 30fps</div>
-            </div>
-            
-            <button
-              onClick={videoRefresh}
-              className="w-full py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
-            >
-              <RefreshCw size={14} />
-              Refresh Feed
-            </button>
           </div>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -25,6 +26,17 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  // Keep Render backend alive — ping every 10 minutes to prevent spin-down
+  useEffect(() => {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://sys-admin-62ro.onrender.com';
+    const keepAlive = () => {
+      fetch(`${backendUrl}/`, { method: 'HEAD', mode: 'no-cors' }).catch(() => {});
+    };
+    keepAlive();
+    const interval = setInterval(keepAlive, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   Bus, Users, DollarSign, Activity, AlertTriangle,
-  Map as MapIcon, TrendingUp, Zap, Navigation, ArrowUp, ArrowDown, Video, RefreshCw, CheckCircle, ChevronLeft, ChevronRight
+  Map as MapIcon, TrendingUp, Zap, Navigation, ArrowUp, ArrowDown, Video, RefreshCw, CheckCircle, ChevronLeft, ChevronRight,
+  Wifi, Maximize2
 } from 'lucide-react';
 import { useBackendVideo } from '../hooks/useBackendVideo';
 import {
@@ -93,34 +94,40 @@ const fetchRouteCoordinates = async (startCoords: [number, number], endCoords: [
   return [startCoords, endCoords];
 };
 
-const BusMarker = ({ bus }: { bus: any }) => (
-  <Marker position={[bus.lat, bus.lng]}>
-    <Popup>
-      <div className="p-2">
-        <h3 className="font-bold text-gray-800">{bus.plate}</h3>
-        <p className="text-sm text-gray-600">{bus.route}</p>
-        <p className="text-xs text-gray-700 mt-2">
-          {Number(bus.lat).toFixed(6)}, {Number(bus.lng).toFixed(6)}
-        </p>
-        <p className="text-xs text-gray-500 mt-1">
-          Source: {bus.locationSource || 'fallback'}
-        </p>
-        {bus.locationUpdatedAt && (
-          <p className="text-xs text-gray-500">
-            Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
+const BusMarker = ({ bus, liveCount }: { bus: any; liveCount?: number }) => {
+  const displayPassengers = (bus.status === 'active' && typeof liveCount === 'number' && liveCount > 0)
+    ? Math.max(bus.passengers || 0, liveCount)
+    : (bus.passengers || 0);
+
+  return (
+    <Marker position={[bus.lat, bus.lng]}>
+      <Popup>
+        <div className="p-2 min-w-[180px]">
+          <h3 className="font-bold text-gray-800">{bus.plate}</h3>
+          <p className="text-sm text-gray-600">{bus.route}</p>
+          <p className="text-xs text-gray-700 mt-2">
+            {Number(bus.lat).toFixed(6)}, {Number(bus.lng).toFixed(6)}
           </p>
-        )}
-        <div className="flex items-center gap-2 mt-2">
-          <Users size={16} className="text-orange-500" />
-          <span className="text-sm">{bus.passengers} passengers</span>
+          <p className="text-xs text-gray-500 mt-1">
+            Source: {bus.locationSource || 'fallback'}
+          </p>
+          {bus.locationUpdatedAt && (
+            <p className="text-xs text-gray-500">
+              Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
+            </p>
+          )}
+          <div className="flex items-center gap-2 mt-2">
+            <Users size={16} className="text-orange-500" />
+            <span className="text-sm font-medium">{displayPassengers} passenger{displayPassengers !== 1 ? 's' : ''}</span>
+          </div>
+          <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+            {bus.status}
+          </span>
         </div>
-        <span className={`inline-block px-2 py-1 rounded text-xs mt-2 ${bus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-          {bus.status}
-        </span>
-      </div>
-    </Popup>
-  </Marker>
-);
+      </Popup>
+    </Marker>
+  );
+};
 
 export default function Dashboard() {
   const [kpiData, setKpiData] = useState({
@@ -160,6 +167,32 @@ export default function Dashboard() {
     videoRef,
     refresh: videoRefresh,
   } = useBackendVideo({ autoConnect: true });
+
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const toggleFullscreen = () => {
+    if (!videoContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      videoContainerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  // Synchronize live camera detection passenger count with map markers and stats in real time
+  useEffect(() => {
+    if (videoPassengerCount > 0) {
+      setMapBuses(prev => prev.map(bus => {
+        if (bus.status === 'active') {
+          return { ...bus, passengers: Math.max(bus.passengers || 0, videoPassengerCount) };
+        }
+        return bus;
+      }));
+      setMapStats(prev => ({
+        ...prev,
+        totalPassengers: Math.max(prev.totalPassengers || 0, videoPassengerCount)
+      }));
+    }
+  }, [videoPassengerCount]);
 
   // Debounce ref for real-time updates
   const dashboardDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -439,28 +472,52 @@ export default function Dashboard() {
         };
       });
 
-      // Fetch boarded passengers for active trips
-      const tripIds = (activeTrips || []).map((t: any) => t.id);
+      // Fetch passenger counts from both passenger_counts and boarded_passengers
+      const tripIds = (activeTrips || []).map((t: any) => t.id).filter(Boolean);
+      const busIds = (allBuses || []).map((b: any) => b.id).filter(Boolean);
       let totalPassengers = 0;
 
-      if (tripIds.length > 0) {
-        const { data: boardedPassengers } = await supabase
-          .from('boarded_passengers')
-          .select('trip_id')
-          .in('trip_id', tripIds);
+      const [bpRes, pcRes] = await Promise.all([
+        tripIds.length > 0
+          ? supabase.from('boarded_passengers').select('trip_id').in('trip_id', tripIds)
+          : Promise.resolve({ data: [] }),
+        (tripIds.length > 0 || busIds.length > 0)
+          ? (supabase
+              .from('passenger_counts')
+              .select('trip_id, bus_id, count, ai_count, recorded_at')
+              .order('recorded_at', { ascending: false })
+              .limit(50) as any)
+          : Promise.resolve({ data: [] }),
+      ]);
 
-        const passengerCountsByTrip: Record<string, number> = {};
-        (boardedPassengers || []).forEach((bp: any) => {
-          passengerCountsByTrip[bp.trip_id] = (passengerCountsByTrip[bp.trip_id] || 0) + 1;
-        });
+      const passengerCountsByTrip: Record<string, number> = {};
+      const passengerCountsByBus: Record<string, number> = {};
 
-        busMarkers.forEach((bus: any) => {
-          if (passengerCountsByTrip[bus.tripId]) {
-            bus.passengers = passengerCountsByTrip[bus.tripId];
-            totalPassengers += passengerCountsByTrip[bus.tripId];
-          }
-        });
-      }
+      (pcRes.data || []).forEach((pc: any) => {
+        const count = pc.ai_count ?? pc.count ?? 0;
+        if (pc.trip_id && passengerCountsByTrip[pc.trip_id] === undefined) {
+          passengerCountsByTrip[pc.trip_id] = count;
+        }
+        if (pc.bus_id && passengerCountsByBus[pc.bus_id] === undefined) {
+          passengerCountsByBus[pc.bus_id] = count;
+        }
+      });
+
+      (bpRes.data || []).forEach((bp: any) => {
+        passengerCountsByTrip[bp.trip_id] = Math.max(
+          passengerCountsByTrip[bp.trip_id] || 0,
+          (passengerCountsByTrip[bp.trip_id] || 0) + 1
+        );
+      });
+
+      busMarkers.forEach((bus: any) => {
+        const dbCount = passengerCountsByTrip[bus.tripId] ?? passengerCountsByBus[bus.busId] ?? 0;
+        const liveCount = (bus.status === 'active' && videoPassengerCount > 0)
+          ? Math.max(dbCount, videoPassengerCount)
+          : dbCount;
+        bus.passengers = liveCount;
+        totalPassengers += liveCount;
+      });
 
       // Only show active buses (those with in-progress trips)
       setMapBuses(busMarkers as any);
@@ -705,92 +762,169 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Video Feed */}
-          <div className="lg:col-span-2 relative bg-black rounded-lg h-96 overflow-hidden">
-            <img
-              ref={videoRef}
-              alt="Live video feed"
-              className={`absolute inset-0 w-full h-full object-contain ${videoStreaming ? 'block' : 'hidden'}`}
-            />
-            {!videoStreaming && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center px-4">
-                  <Video className="text-white/30 mx-auto mb-2" size={32} />
-                  <p className="text-white/40 text-sm">
-                    {videoConnectionStatus === 'connecting' ? 'Connecting to backend...' : videoConnectionMessage || 'Video feed unavailable'}
-                  </p>
-                  {videoConnectionStatus === 'connected' && (
-                    <p className="text-white/30 text-xs mt-2">
-                      No Raspberry Pi device currently streaming. Connect a Pi with camera to see live video.
+        {/* Responsive 4:3 Camera Layout + Telematics Panel (Tight centered layout, reduced gap) */}
+        <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-4 lg:gap-5 w-full">
+          {/* Video Feed (Native 4:3 Aspect Ratio) */}
+          <div className="w-full max-w-[580px] shrink-0">
+            <div
+              ref={videoContainerRef}
+              className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
+            >
+              {/* Live Image Frame */}
+              <img
+                ref={videoRef}
+                alt="Live camera stream"
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  videoStreaming ? 'opacity-100 block' : 'opacity-0 hidden'
+                }`}
+              />
+
+              {/* Offline / Connecting State */}
+              {!videoStreaming && (
+                <div className="absolute inset-0 flex items-center justify-center p-6 bg-gradient-to-b from-black/80 via-black/90 to-black/95">
+                  <div className="text-center max-w-sm">
+                    <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-3 shadow-inner">
+                      {videoConnectionStatus === 'connecting' ? (
+                        <RefreshCw className="w-8 h-8 text-orange-400 animate-spin" />
+                      ) : (
+                        <Video className="w-8 h-8 text-white/30" />
+                      )}
+                    </div>
+                    <p className="text-white font-semibold text-base mb-1">
+                      {videoConnectionStatus === 'connecting' ? 'Connecting to camera…' : 'Camera Stream Offline'}
                     </p>
-                  )}
+                    <p className="text-white/40 text-xs mb-4 leading-relaxed">
+                      {videoConnectionMessage || 'Waiting for live frames from Raspberry Pi camera.'}
+                    </p>
+                    <button
+                      onClick={videoRefresh}
+                      className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 rounded-xl text-xs font-medium transition-all flex items-center gap-2 mx-auto active:scale-95"
+                    >
+                      <RefreshCw size={13} />
+                      Reconnect Feed
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Top HUD Overlay */}
+              <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none z-10">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 shadow-lg border ${
+                    videoStreaming
+                      ? 'bg-red-500/85 text-white border-red-400/40'
+                      : 'bg-black/70 text-white/60 border-white/10'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-white animate-pulse' : 'bg-red-400'}`} />
+                    {videoStreaming ? 'LIVE' : 'OFFLINE'}
+                  </span>
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white/90 text-xs px-2.5 py-1 rounded-full font-medium shadow-md">
+                    Bus #1 • Interior
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="bg-black/70 backdrop-blur-md border border-white/10 text-white text-xs px-3 py-1 rounded-full font-bold flex items-center gap-1.5 shadow-lg">
+                    <Users size={13} className="text-orange-400" />
+                    <span>{videoPassengerCount} Detected</span>
+                  </span>
+                  <button
+                    onClick={toggleFullscreen}
+                    className="pointer-events-auto bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/10 text-white/80 hover:text-white p-1.5 rounded-full transition-all"
+                    title="Fullscreen"
+                  >
+                    <Maximize2 size={13} />
+                  </button>
                 </div>
               </div>
-            )}
-            {videoStreaming && (
-              <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1 flex items-center gap-2">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-white text-xs font-medium">LIVE</span>
-              </div>
-            )}
-            {videoStreaming && (
-              <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm rounded-lg px-2 py-1">
-                <div className="flex items-center gap-1">
-                  <Users size={12} className="text-orange-400" />
-                  <span className="text-white text-xs font-bold">{videoPassengerCount}</span>
+
+              {/* Bottom HUD Overlay */}
+              <div className="absolute bottom-3 inset-x-3 flex items-center justify-between pointer-events-none z-10 text-[11px] text-white/80">
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-full flex items-center gap-2 shadow-md">
+                  <Activity size={12} className="text-emerald-400" />
+                  <span className="font-mono">AI: YOLOv8n</span>
+                  <span className="text-white/40">•</span>
+                  <span className="text-white/60">640×480 (4:3)</span>
+                </div>
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md">
+                  <Wifi size={12} className={videoStreaming ? 'text-green-400' : 'text-white/40'} />
+                  <span className="font-medium capitalize">{videoStreaming ? '30 FPS' : videoConnectionStatus}</span>
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Video Details Sidebar */}
-          <div className="col-span-1 space-y-3">
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Current Status</div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400' : 'bg-red-400'}`} />
-                <span className="text-white text-sm font-medium">
-                  {videoStreaming ? 'Streaming' : 'Offline'}
+          {/* Telematics & AI Controls Sidebar */}
+          <div className="w-full lg:w-[320px] xl:w-[340px] shrink-0 flex flex-col gap-3">
+            {/* Occupancy Card */}
+            <div className="glass-card p-4 rounded-xl border border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-white/60 text-xs font-medium uppercase tracking-wider">Bus Occupancy</span>
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                  videoPassengerCount > 25
+                    ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                    : videoPassengerCount > 10
+                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                }`}>
+                  {videoPassengerCount > 25 ? 'Near Capacity' : videoPassengerCount > 10 ? 'Moderate' : 'Low Occupancy'}
                 </span>
               </div>
-            </div>
-
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Passenger Count</div>
-              <div className="flex items-center gap-2">
-                <Users size={16} className="text-orange-400" />
-                <span className="text-white text-2xl font-bold">{videoPassengerCount}</span>
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
+                <span className="text-white/50 text-sm font-medium">/ 30 seats</span>
+              </div>
+              {/* Progress Bar */}
+              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    videoPassengerCount > 25 ? 'bg-red-500' : videoPassengerCount > 10 ? 'bg-yellow-400' : 'bg-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
+                />
               </div>
             </div>
 
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Connection</div>
-              <div className="text-white text-sm">
-                {videoConnectionStatus}
+            {/* Stream Telemetry Grid */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <Activity size={13} className="text-blue-400" />
+                  <span>AI Model</span>
+                </div>
+                <div className="text-white font-semibold text-sm">YOLOv8n ONNX</div>
+                <div className="text-emerald-400 text-[10px] mt-0.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Realtime Detection
+                </div>
+              </div>
+
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <Video size={13} className="text-purple-400" />
+                  <span>Resolution</span>
+                </div>
+                <div className="text-white font-semibold text-sm">640×480 (4:3)</div>
+                <div className="text-white/50 text-[10px] mt-0.5">Native Sensor</div>
+              </div>
+
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <Wifi size={13} className="text-green-400" />
+                  <span>Latency</span>
+                </div>
+                <div className="text-white font-semibold text-sm">&lt; 100 ms</div>
+                <div className="text-white/50 text-[10px] mt-0.5">WebSocket Live</div>
+              </div>
+
+              <div className="glass-card p-3 rounded-xl border border-white/10">
+                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
+                  <CheckCircle size={13} className="text-orange-400" />
+                  <span>Stream State</span>
+                </div>
+                <div className="text-white font-semibold text-sm capitalize">{videoStreaming ? 'Active' : videoConnectionStatus}</div>
+                <div className="text-white/50 text-[10px] mt-0.5">Bus #1 Telematics</div>
               </div>
             </div>
-
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">AI Detection</div>
-              <div className="flex items-center gap-2">
-                <Activity size={16} className="text-blue-400" />
-                <span className="text-white text-sm font-medium">YOLOv8n</span>
-              </div>
-            </div>
-
-            <div className="glass-card p-3">
-              <div className="text-white/70 text-xs mb-2">Resolution</div>
-              <div className="text-white text-sm">640x480 @ 30fps</div>
-            </div>
-
-            <button
-              onClick={videoRefresh}
-              className="w-full py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
-            >
-              <RefreshCw size={14} />
-              Refresh Feed
-            </button>
           </div>
         </div>
       </div>
@@ -846,7 +980,7 @@ export default function Dashboard() {
               )
             ))}
             {mapBuses.map((bus: any) => (
-              <BusMarker key={bus.id} bus={bus} />
+              <BusMarker key={bus.id} bus={bus} liveCount={videoPassengerCount} />
             ))}
           </MapContainer>
         </div>

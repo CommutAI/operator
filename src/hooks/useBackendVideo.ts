@@ -1,37 +1,113 @@
 /**
- * useBackendVideo — WebSocket connection to Raspberry Pi video server
- * Streams JPEG frames + passenger count over a single WebSocket.
+ * useBackendVideo — WebSocket connection for live camera streaming & AI detection:
+ * 1. Checks configured VITE_RASPBERRY_PI_URL (Cloudflare tunnel)
+ * 2. In parallel, auto-discovers active tunnel from Supabase `pi_devices` table
+ * 3. Falls back to Render Backend WebSocket relay (/ws/video-feed)
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
+import { supabase } from '../lib/supabase';
 
 const HEARTBEAT_MS = 30_000;
-const CONNECT_TIMEOUT_MS = 10_000;
+const CONNECT_TIMEOUT_MS = 12_000;
 const MAX_RECONNECT_ATTEMPTS = 3;
 
 interface UseBackendVideoOptions {
   autoConnect?: boolean;
+  videoRef?: RefObject<HTMLImageElement | null>;
 }
 
-export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions = {}) {
+interface ResolvedEndpoint {
+  wsUrl: string;
+  label: string;
+}
+
+async function probeUrl(url: string, timeoutMs = 2500): Promise<boolean> {
+  if (!url) return false;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(`${url.replace(/\/$/, '')}/health`, { signal: ctrl.signal });
+    clearTimeout(t);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveVideoEndpoint(): Promise<ResolvedEndpoint> {
+  const envPiUrl = (import.meta.env.VITE_RASPBERRY_PI_URL || '').trim().replace(/\/$/, '');
+  const backendUrl = (import.meta.env.VITE_BACKEND_URL || 'https://sys-admin-62ro.onrender.com').trim().replace(/\/$/, '');
+
+  // Probe explicit env URL and Supabase pi_devices registration concurrently
+  const [envProbe, dbResult] = await Promise.allSettled([
+    envPiUrl ? probeUrl(envPiUrl, 2500) : Promise.resolve(false),
+    supabase.from('pi_devices').select('backend_url, ip_address, port').eq('bus_number', 1).maybeSingle(),
+  ]);
+
+  // 1. If explicit env URL responded healthy, use it
+  if (envProbe.status === 'fulfilled' && envProbe.value) {
+    return {
+      wsUrl: envPiUrl.replace(/^http/, 'ws') + '/ws',
+      label: 'Raspberry Pi (Direct Stream)',
+    };
+  }
+
+  // 2. If Supabase holds a live tunnel URL, probe and use it
+  if (dbResult.status === 'fulfilled' && (dbResult.value as any)?.data) {
+    const { backend_url, ip_address, port } = (dbResult.value as any).data;
+
+    if (backend_url && backend_url.startsWith('https://')) {
+      if (await probeUrl(backend_url, 2500)) {
+        return {
+          wsUrl: backend_url.replace(/^http/, 'ws') + '/ws',
+          label: 'Raspberry Pi (Cloudflare Tunnel)',
+        };
+      }
+    }
+
+    // On local HTTP origins, try direct LAN IP
+    if (ip_address && typeof window !== 'undefined' && window.location.protocol === 'http:') {
+      const lanUrl = `http://${ip_address}:${port || 8080}`;
+      if (await probeUrl(lanUrl, 1500)) {
+        return {
+          wsUrl: lanUrl.replace(/^http/, 'ws') + '/ws',
+          label: 'Raspberry Pi (Local LAN)',
+        };
+      }
+    }
+  }
+
+  // 3. Fallback to centralized Backend WebSocket
+  return {
+    wsUrl: backendUrl.replace(/^http/, 'ws') + '/ws/video-feed',
+    label: 'Backend Video Relay',
+  };
+}
+
+export function useBackendVideo({ autoConnect = false, videoRef: externalVideoRef }: UseBackendVideoOptions = {}) {
   const [isStreaming, setIsStreaming]           = useState(false);
   const [passengerCount, setPassengerCount]     = useState(0);
   const [error, setError]                       = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [connectionMessage, setConnectionMessage] = useState<string>('');
 
-  const wsRef              = useRef<WebSocket | null>(null);
-  const videoRef           = useRef<HTMLImageElement>(null);
-  const heartbeatRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const connectTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const deadRef            = useRef(false);
+  const wsRef               = useRef<WebSocket | null>(null);
+  const internalVideoRef    = useRef<HTMLImageElement>(null);
+  const videoRef            = externalVideoRef || internalVideoRef;
+  const heartbeatRef        = useRef<number | null>(null);
+  const connectTimeoutRef   = useRef<number | null>(null);
+  const deadRef             = useRef(false);
   const reconnectAttemptsRef = useRef(0);
 
-  const piUrl = import.meta.env.VITE_RASPBERRY_PI_URL || 'http://192.168.1.54:5000';
-  const wsUrl = piUrl.replace(/^http/, 'ws') + '/ws';
-
   const clearTimers = useCallback(() => {
-    if (heartbeatRef.current)      { clearInterval(heartbeatRef.current);     heartbeatRef.current = null; }
-    if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null; }
+    if (heartbeatRef.current !== null) {
+      window.clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    if (connectTimeoutRef.current !== null) {
+      window.clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
   }, []);
 
   const closeSocket = useCallback((ws: WebSocket | null) => {
@@ -40,7 +116,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
     if (ws.readyState < WebSocket.CLOSING) ws.close();
   }, []);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (deadRef.current || reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) return;
 
     closeSocket(wsRef.current);
@@ -48,20 +124,25 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
     clearTimers();
 
     setConnectionStatus('connecting');
-    setConnectionMessage(`Connecting to Raspberry Pi…`);
+    setConnectionMessage('Locating camera stream…');
     setError(null);
     setIsStreaming(false);
 
     try {
-      const ws = new WebSocket(wsUrl);
+      const endpoint = await resolveVideoEndpoint();
+      if (deadRef.current) return;
+
+      setConnectionMessage(`Connecting to ${endpoint.label}…`);
+
+      const ws = new WebSocket(endpoint.wsUrl);
       wsRef.current = ws;
 
-      connectTimeoutRef.current = setTimeout(() => {
+      connectTimeoutRef.current = window.setTimeout(() => {
         if (ws.readyState === WebSocket.CONNECTING) {
           closeSocket(ws);
           reconnectAttemptsRef.current++;
           setConnectionStatus('error');
-          setConnectionMessage('Connection timeout — Raspberry Pi may be offline');
+          setConnectionMessage(`Connection timeout — ${endpoint.label} may be offline`);
           setError('Connection timeout');
         }
       }, CONNECT_TIMEOUT_MS);
@@ -70,15 +151,25 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
         clearTimers();
         if (deadRef.current || wsRef.current !== ws) { closeSocket(ws); return; }
 
-        reconnectAttemptsRef.current = 0; // Reset on successful connection
+        reconnectAttemptsRef.current = 0;
         setConnectionStatus('connected');
-        setConnectionMessage('Connected to Raspberry Pi');
-        setIsStreaming(true);
+        setConnectionMessage(`Connected to ${endpoint.label}`);
         setError(null);
+
+        // Tell Pi video server to start streaming frames
+        try {
+          ws.send(JSON.stringify({ action: 'start_stream' }));
+        } catch {
+          // ignore send error
+        }
 
         heartbeatRef.current = window.setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
+            try {
+              ws.send(JSON.stringify({ type: 'ping' }));
+            } catch {
+              clearTimers();
+            }
           } else {
             clearTimers();
           }
@@ -90,17 +181,20 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
         try {
           const data = JSON.parse(event.data as string);
 
-          if (data.video_frame && videoRef.current) {
-            videoRef.current.src = `data:image/jpeg;base64,${data.video_frame}`;
-            setIsStreaming(true);
-          } else if (data.type === 'video_frame' && data.frame && videoRef.current) {
-            videoRef.current.src = `data:image/jpeg;base64,${data.frame}`;
+          const frame = data.video_frame || (data.type === 'video_frame' && data.frame) || data.frame;
+          if (frame) {
+            if (videoRef.current) {
+              videoRef.current.src = `data:image/jpeg;base64,${frame}`;
+            }
             setIsStreaming(true);
           }
 
-          if (data.count !== undefined) setPassengerCount(data.count);
+          const count = data.count ?? data.passenger_count;
+          if (count !== undefined && typeof count === 'number') {
+            setPassengerCount(count);
+          }
         } catch {
-          // non-JSON frames are silently ignored
+          // Non-JSON frame or status string
         }
       };
 
@@ -109,9 +203,8 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
         if (wsRef.current !== ws) return;
         if (!deadRef.current) {
           setConnectionStatus('disconnected');
-          setConnectionMessage('Disconnected from Raspberry Pi');
+          setConnectionMessage(`Disconnected from ${endpoint.label}`);
           setIsStreaming(false);
-          setError('Connection closed');
         }
       };
 
@@ -120,7 +213,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
         if (!deadRef.current) {
           setError('Connection error');
           setConnectionStatus('error');
-          setConnectionMessage('Failed to connect — check if ngrok tunnel is running');
+          setConnectionMessage(`Failed to connect to ${endpoint.label}`);
         }
       };
     } catch {
@@ -129,7 +222,7 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
       setConnectionStatus('error');
       setConnectionMessage('WebSocket connection failed');
     }
-  }, [wsUrl, clearTimers, closeSocket]);
+  }, [clearTimers, closeSocket, videoRef]);
 
   const disconnect = useCallback(() => {
     clearTimers();
@@ -143,13 +236,28 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
   const refresh = useCallback(() => {
     reconnectAttemptsRef.current = 0;
     disconnect();
-    setTimeout(connect, 300);
+    setTimeout(() => {
+      if (!deadRef.current) connect();
+    }, 300);
   }, [disconnect, connect]);
 
   useEffect(() => {
     deadRef.current = false;
     reconnectAttemptsRef.current = 0;
-    if (autoConnect) connect();
+    if (autoConnect) {
+      // Defer execution so setState is not called synchronously within the effect body
+      const timer = setTimeout(() => {
+        if (!deadRef.current) connect();
+      }, 0);
+      return () => {
+        clearTimeout(timer);
+        deadRef.current = true;
+        clearTimers();
+        closeSocket(wsRef.current);
+        wsRef.current = null;
+        reconnectAttemptsRef.current = 0;
+      };
+    }
     return () => {
       deadRef.current = true;
       clearTimers();
@@ -159,5 +267,15 @@ export function useBackendVideo({ autoConnect = false }: UseBackendVideoOptions 
     };
   }, [autoConnect, connect, clearTimers, closeSocket]);
 
-  return { isStreaming, passengerCount, error, connectionStatus, connectionMessage, videoRef, connect, disconnect, refresh };
+  return {
+    isStreaming,
+    passengerCount,
+    error,
+    connectionStatus,
+    connectionMessage,
+    videoRef,
+    connect,
+    disconnect,
+    refresh,
+  };
 }

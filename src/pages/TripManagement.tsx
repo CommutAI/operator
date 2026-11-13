@@ -67,7 +67,7 @@ export default function TripManagement() {
       setLoading(true);
       const { data, error } = await supabase
         .from('trips')
-        .select('*, buses(*), conductor:staff_users!conductor_id(*)')
+        .select('*, buses!fk_trips_bus_id(*), conductor:staff_users!fk_trips_conductor_id(*)')
         .order('started_at', { ascending: false });
 
       if (error) throw error;
