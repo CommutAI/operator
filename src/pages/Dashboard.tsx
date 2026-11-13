@@ -743,32 +743,37 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* Video Monitoring - Dashboard Widget */}
-      <div className="glass-card p-4 lg:p-6 border-2 border-orange-500/20">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg lg:text-xl font-bold text-white flex items-center gap-2">
-            <Video className="text-orange-400" size={20} />
-            Video Monitoring
-          </h2>
+      {/* Video Monitoring - Split Pane Widget */}
+      <div className="glass-card overflow-hidden border border-white/10 rounded-2xl shadow-2xl">
+        {/* Split Pane Header */}
+        <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-            <span className="text-white/60 text-xs lg:text-sm hidden sm:inline">{videoConnectionStatus}</span>
+            <Video className="text-orange-400" size={18} />
+            <h2 className="text-base lg:text-lg font-bold text-white tracking-wide">Video Monitoring</h2>
+            <span className="text-[11px] font-mono text-white/40 hidden sm:inline">• Bus #1 Telematics</span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs">
+              <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+              <span className="text-white/80 capitalize font-medium">{videoStreaming ? 'Live Stream' : videoConnectionStatus}</span>
+            </div>
             <button
               onClick={videoRefresh}
-              className="bg-white/10 hover:bg-white/20 text-white p-1 rounded transition-colors"
-              title="Refresh"
+              className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded-lg transition-colors border border-white/10"
+              title="Refresh stream"
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={13} />
             </button>
           </div>
         </div>
-        {/* Responsive 4:3 Camera Layout + Telematics Panel (Compact 4:3 camera + full width telemetry grid) */}
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch w-full">
-          {/* Video Feed (Compact 4:3 Aspect Ratio) */}
-          <div className="w-full lg:w-[420px] xl:w-[480px] shrink-0 flex flex-col justify-center">
+
+        {/* Split Pane Body (Left: Video Stream, Right: Telematics) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-white/10 items-stretch">
+          {/* Left Pane: Live Camera Stream */}
+          <div className="lg:col-span-5 p-4 lg:p-5 flex flex-col justify-center bg-black/30">
             <div
               ref={videoContainerRef}
-              className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
+              className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-xl overflow-hidden border border-white/15 shadow-xl flex items-center justify-center group"
             >
               {/* Live Image Frame */}
               <img
@@ -854,99 +859,93 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Telematics & AI Controls Sidebar */}
-          <div className="flex-1 min-w-0 flex flex-col justify-between gap-3 w-full">
-            {/* Row 1: Occupancy Hero + Active Vehicle Telematics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Occupancy Card */}
-              <div className="glass-card p-4 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-white/60 text-xs font-medium uppercase tracking-wider">Bus Occupancy</span>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                    videoPassengerCount > 25
-                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                      : videoPassengerCount > 10
-                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  }`}>
-                    {videoPassengerCount > 25 ? 'Near Capacity' : videoPassengerCount > 10 ? 'Moderate' : 'Low Occupancy'}
-                  </span>
+          {/* Right Pane: Telematics & Controls */}
+          <div className="lg:col-span-7 p-4 lg:p-5 flex flex-col justify-between gap-4 bg-white/[0.01]">
+            {/* Top Section: Occupancy Hero Card */}
+            <div className="glass-card p-4 rounded-xl border border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Users size={16} className="text-orange-400" />
+                  <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">Live Occupancy Monitor</span>
                 </div>
-                <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
-                  <span className="text-white/50 text-xs font-medium">/ 30 seats</span>
-                </div>
-                <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      videoPassengerCount > 25 ? 'bg-red-500' : videoPassengerCount > 10 ? 'bg-yellow-400' : 'bg-emerald-400'
-                    }`}
-                    style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
-                  />
-                </div>
+                <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${
+                  videoPassengerCount > 25
+                    ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                    : videoPassengerCount > 10
+                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                }`}>
+                  {videoPassengerCount > 25 ? 'Near Capacity' : videoPassengerCount > 10 ? 'Moderate' : 'Low Occupancy'}
+                </span>
               </div>
 
-              {/* Active Bus & Telematics Info */}
-              <div className="glass-card p-4 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-white/60 text-xs font-medium uppercase tracking-wider">Active Vehicle</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                    Bus #1 • 1001
-                  </span>
+              <div className="flex items-baseline justify-between mb-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
+                  <span className="text-white/50 text-sm font-medium">/ 30 seats occupied</span>
                 </div>
-                <div>
-                  <div className="text-white font-semibold text-sm truncate">Manolo Fortich ↔ Agora Terminal</div>
-                  <div className="text-white/50 text-xs mt-0.5">Route: Main Commuter Express</div>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] text-white/60 pt-1 border-t border-white/5">
-                  <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                    <Navigation size={11} /> GPS Active
-                  </span>
-                  <span>•</span>
-                  <span>Speed: 0 km/h</span>
-                </div>
+                <span className="text-xs text-white/50 font-medium">
+                  {30 - videoPassengerCount} seats remaining
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    videoPassengerCount > 25 ? 'bg-red-500' : videoPassengerCount > 10 ? 'bg-yellow-400' : 'bg-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
+                />
               </div>
             </div>
 
-            {/* Row 2: 4 Stream Telemetry Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+            {/* Bottom Section: 4 Telemetry Cards in 2x2 Grid */}
+            <div className="grid grid-cols-2 gap-3 flex-1">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <Activity size={13} className="text-blue-400" />
-                  <span>AI Model</span>
+                  <span>AI Detection Model</span>
                 </div>
-                <div className="text-white font-semibold text-sm truncate">YOLOv8n ONNX</div>
-                <div className="text-emerald-400 text-[10px] mt-0.5 truncate flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Realtime Active
+                <div>
+                  <div className="text-white font-semibold text-sm">YOLOv8n ONNX</div>
+                  <div className="text-emerald-400 text-[10px] mt-0.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Realtime Active
+                  </div>
                 </div>
               </div>
 
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <Video size={13} className="text-purple-400" />
-                  <span>Resolution</span>
+                  <span>Sensor Aspect & Res</span>
                 </div>
-                <div className="text-white font-semibold text-sm">640×480 (4:3)</div>
-                <div className="text-white/50 text-[10px] mt-0.5">Native Sensor</div>
+                <div>
+                  <div className="text-white font-semibold text-sm">640×480 (4:3)</div>
+                  <div className="text-white/50 text-[10px] mt-0.5">Native Sensor Resolution</div>
+                </div>
               </div>
 
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <Wifi size={13} className="text-green-400" />
-                  <span>Latency</span>
+                  <span>Streaming Latency</span>
                 </div>
-                <div className="text-white font-semibold text-sm">&lt; 100 ms</div>
-                <div className="text-white/50 text-[10px] mt-0.5">WebSocket Live</div>
+                <div>
+                  <div className="text-white font-semibold text-sm">&lt; 100 ms</div>
+                  <div className="text-white/50 text-[10px] mt-0.5">Direct WebSocket Relay</div>
+                </div>
               </div>
 
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <CheckCircle size={13} className="text-orange-400" />
-                  <span>Stream State</span>
+                  <span>Feed Pipeline</span>
                 </div>
-                <div className="text-white font-semibold text-sm capitalize truncate">{videoStreaming ? 'Active' : videoConnectionStatus}</div>
-                <div className="text-white/50 text-[10px] mt-0.5">Cloudflare Tunnel</div>
+                <div>
+                  <div className="text-white font-semibold text-sm capitalize">{videoStreaming ? 'Connected & Streaming' : videoConnectionStatus}</div>
+                  <div className="text-white/50 text-[10px] mt-0.5">Cloudflare Tunnel</div>
+                </div>
               </div>
             </div>
           </div>

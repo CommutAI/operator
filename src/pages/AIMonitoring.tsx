@@ -335,33 +335,37 @@ export default function AIMonitoring() {
         </div>
       </div>
 
-      {/* Video Monitoring Section - Native 4:3 Camera View */}
-      <div className="glass-card p-4 lg:p-6 border-2 border-orange-500/20">
-        <div className="flex items-center justify-between mb-4">
+      {/* Live AI Video Feed - Split Pane Widget */}
+      <div className="glass-card overflow-hidden border border-white/10 rounded-2xl shadow-2xl">
+        {/* Split Pane Header */}
+        <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
           <div className="flex items-center gap-2">
-            <Video className="text-orange-400" size={20} />
-            <h2 className="text-lg lg:text-xl font-bold text-white">Live AI Video Feed</h2>
+            <Video className="text-orange-400" size={18} />
+            <h2 className="text-base lg:text-lg font-bold text-white tracking-wide">Live AI Video Feed</h2>
+            <span className="text-[11px] font-mono text-white/40 hidden sm:inline">• Bus #1 Real-time Stream</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-            <span className="text-white/60 text-xs capitalize hidden sm:inline">{videoConnectionStatus}</span>
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs">
+              <div className={`w-2 h-2 rounded-full ${videoStreaming ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+              <span className="text-white/80 capitalize font-medium">{videoStreaming ? 'Connected' : videoConnectionStatus}</span>
+            </div>
             <button
               onClick={videoRefresh}
-              className="bg-white/10 hover:bg-white/20 text-white p-1 rounded transition-colors"
+              className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded-lg transition-colors border border-white/10"
               title="Refresh feed"
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={13} />
             </button>
           </div>
         </div>
 
-        {/* Responsive 4:3 Camera Layout + AI Telematics Panel (Compact 4:3 camera + full width telemetry grid) */}
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch w-full">
-          {/* Video Feed (Compact 4:3 Container) */}
-          <div className="w-full lg:w-[420px] xl:w-[480px] shrink-0 flex flex-col justify-center">
+        {/* Split Pane Body (Left: Video Stream, Right: AI Telematics) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-white/10 items-stretch">
+          {/* Left Pane: Live Camera Stream */}
+          <div className="lg:col-span-5 p-4 lg:p-5 flex flex-col justify-center bg-black/30">
             <div
               ref={videoContainerRef}
-              className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
+              className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-xl overflow-hidden border border-white/15 shadow-xl flex items-center justify-center group"
             >
               <img
                 ref={videoRef}
@@ -445,89 +449,82 @@ export default function AIMonitoring() {
             </div>
           </div>
 
-          {/* AI Detection Controls & Stats Sidebar */}
-          <div className="flex-1 min-w-0 flex flex-col justify-between gap-3 w-full">
-            {/* Row 1: Passenger Counter Hero + Detection Pipeline */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Passenger Count Hero */}
-              <div className="glass-card p-4 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-white/60 text-xs font-medium uppercase tracking-wider">AI Passenger Counter</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    Real-time Active
-                  </span>
+          {/* Right Pane: AI Telematics & Controls */}
+          <div className="lg:col-span-7 p-4 lg:p-5 flex flex-col justify-between gap-4 bg-white/[0.01]">
+            {/* Top Section: AI Passenger Counter Hero */}
+            <div className="glass-card p-4 rounded-xl border border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Users size={16} className="text-orange-400" />
+                  <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">AI Passenger Counter</span>
                 </div>
-                <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-3xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
-                  <span className="text-white/50 text-xs font-medium">passenger{videoPassengerCount === 1 ? '' : 's'} on board</span>
-                </div>
-                <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-orange-400 transition-all duration-500"
-                    style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
-                  />
-                </div>
+                <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Real-time Active
+                </span>
               </div>
 
-              {/* Detection Pipeline Info */}
-              <div className="glass-card p-4 rounded-xl border border-white/10 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-white/60 text-xs font-medium uppercase tracking-wider">Detection Pipeline</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                    Real-time Active
-                  </span>
+              <div className="flex items-baseline justify-between mb-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight">{videoPassengerCount}</span>
+                  <span className="text-white/50 text-sm font-medium">passenger{videoPassengerCount === 1 ? '' : 's'} on board</span>
                 </div>
-                <div>
-                  <div className="text-white font-semibold text-sm">YOLOv8 Nano Neural Network</div>
-                  <div className="text-white/50 text-xs mt-0.5">Automated Bounding & Occupancy Tally</div>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] text-white/60 pt-1 border-t border-white/5">
-                  <span className="text-emerald-400 font-medium">Confidence &gt; 0.50</span>
-                  <span>•</span>
-                  <span>30 FPS</span>
-                  <span>•</span>
-                  <span>640×480 (4:3)</span>
-                </div>
+                <span className="text-xs text-white/50 font-medium">
+                  {30 - videoPassengerCount} seats available
+                </span>
+              </div>
+
+              <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-orange-400 transition-all duration-500"
+                  style={{ width: `${Math.min(100, (videoPassengerCount / 30) * 100)}%` }}
+                />
               </div>
             </div>
 
-            {/* Row 2: 4 AI Specs Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+            {/* Bottom Section: 4 AI Specs Grid */}
+            <div className="grid grid-cols-2 gap-3 flex-1">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <Activity size={13} className="text-blue-400" />
                   <span>Detection Model</span>
                 </div>
-                <div className="text-white font-semibold text-sm truncate">YOLOv8n ONNX</div>
-                <div className="text-emerald-400 text-[10px] mt-0.5">Confidence &gt; 0.50</div>
+                <div>
+                  <div className="text-white font-semibold text-sm truncate">YOLOv8n ONNX</div>
+                  <div className="text-emerald-400 text-[10px] mt-0.5">Confidence &gt; 0.50</div>
+                </div>
               </div>
 
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <Video size={13} className="text-purple-400" />
                   <span>Aspect & Res</span>
                 </div>
-                <div className="text-white font-semibold text-sm">640×480 (4:3)</div>
-                <div className="text-white/50 text-[10px] mt-0.5">Zero Pillarbox</div>
+                <div>
+                  <div className="text-white font-semibold text-sm">640×480 (4:3)</div>
+                  <div className="text-white/50 text-[10px] mt-0.5">Zero Pillarbox</div>
+                </div>
               </div>
 
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <Clock size={13} className="text-green-400" />
                   <span>Inference Time</span>
                 </div>
-                <div className="text-white font-semibold text-sm">~28 ms / frame</div>
-                <div className="text-white/50 text-[10px] mt-0.5">Real-time Stream</div>
+                <div>
+                  <div className="text-white font-semibold text-sm">~28 ms / frame</div>
+                  <div className="text-white/50 text-[10px] mt-0.5">Real-time Stream</div>
+                </div>
               </div>
 
-              <div className="glass-card p-3 rounded-xl border border-white/10">
+              <div className="glass-card p-3.5 rounded-xl border border-white/10 flex flex-col justify-between">
                 <div className="flex items-center gap-1.5 text-white/50 text-xs mb-1">
                   <CheckCircle size={13} className="text-orange-400" />
                   <span>Feed Pipeline</span>
                 </div>
-                <div className="text-white font-semibold text-sm capitalize truncate">{videoStreaming ? 'Streaming' : videoConnectionStatus}</div>
-                <div className="text-white/50 text-[10px] mt-0.5">Cloudflare Tunnel</div>
+                <div>
+                  <div className="text-white font-semibold text-sm capitalize truncate">{videoStreaming ? 'Streaming' : videoConnectionStatus}</div>
+                  <div className="text-white/50 text-[10px] mt-0.5">Cloudflare Tunnel</div>
+                </div>
               </div>
             </div>
           </div>
