@@ -118,7 +118,7 @@ const VideoMonitoring = ({ autoConnect = true }: VideoMonitoringProps) => {
       <div className="flex justify-center w-full">
         <div
           ref={containerRef}
-          className="relative w-full max-w-[720px] aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
+          className="relative w-full max-w-[960px] xl:max-w-[1024px] aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
         >
           {/* Always-mounted img for incoming JPEG frames */}
           <img

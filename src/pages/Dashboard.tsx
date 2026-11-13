@@ -762,10 +762,10 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        {/* Responsive 4:3 Camera Layout + Telematics Panel (Tight centered layout, reduced gap) */}
-        <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-4 lg:gap-5 w-full">
+        {/* Responsive 4:3 Camera Layout + Telematics Panel (Full width edge-to-edge fit) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch w-full">
           {/* Video Feed (Native 4:3 Aspect Ratio) */}
-          <div className="w-full max-w-[580px] shrink-0">
+          <div className="lg:col-span-7 xl:col-span-7 2xl:col-span-8 flex flex-col justify-center w-full">
             <div
               ref={videoContainerRef}
               className="relative w-full aspect-[4/3] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 rounded-2xl overflow-hidden border border-white/15 shadow-2xl ring-1 ring-white/10 flex items-center justify-center group"
@@ -855,7 +855,7 @@ export default function Dashboard() {
           </div>
 
           {/* Telematics & AI Controls Sidebar */}
-          <div className="w-full lg:w-[320px] xl:w-[340px] shrink-0 flex flex-col gap-3">
+          <div className="lg:col-span-5 xl:col-span-5 2xl:col-span-4 flex flex-col justify-between gap-3.5 w-full">
             {/* Occupancy Card */}
             <div className="glass-card p-4 rounded-xl border border-white/10">
               <div className="flex items-center justify-between mb-2">
