@@ -213,6 +213,8 @@ export default function Reports() {
     fetchTransactions();
   }, []);
 
+  // ── removed duplicate useEffect that also called fetchStats/fetchRecentActivity/fetchTransactions ──
+
   useEffect(() => {
     // Initialize with only a few key columns instead of all columns
     if (reportType === 'trips') {
@@ -230,18 +232,12 @@ export default function Reports() {
     setGeneratedReport([]);
   }, [reportType]);
 
-  useEffect(() => {
-    fetchStats();
-    fetchRecentActivity();
-    fetchTransactions();
-  }, []);
-
   const fetchStats = async () => {
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const [revenueData, tripsData, passengersData, busesData] = await Promise.all([
         supabase.from('transactions').select('amount, type, created_at').gte('created_at', sevenDaysAgo),
-        supabase.from('trips').select('*'),
+        supabase.from('trips').select('id, status, started_at, ended_at, total_passengers, total_fares'),
         supabase.from('passenger_counts').select('count'),
         supabase.from('buses').select('*').eq('status', 'active'),
       ]);
@@ -340,7 +336,8 @@ export default function Reports() {
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
       if (error) throw error;
       setTransactions(data || []);
     } catch (error) {
