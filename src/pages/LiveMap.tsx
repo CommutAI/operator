@@ -204,9 +204,15 @@ const LiveMap = () => {
 
         // Track latest driver phone GPS and satellite GPS separately
         if (gps.source === 'driver_phone_gps') {
-          if (!latestDriverPhoneGps) latestDriverPhoneGps = gps;
+          // Keep the most recent driver phone GPS
+          if (!latestDriverPhoneGps || new Date(gps.recordedAt) > new Date(latestDriverPhoneGps.recordedAt)) {
+            latestDriverPhoneGps = gps;
+          }
         } else if (gps.source === 'gps') {
-          if (!latestSatelliteGps) latestSatelliteGps = gps;
+          // Keep the most recent satellite GPS
+          if (!latestSatelliteGps || new Date(gps.recordedAt) > new Date(latestSatelliteGps.recordedAt)) {
+            latestSatelliteGps = gps;
+          }
         }
 
         // Real GPS fix (driver phone or hardware GPS)
@@ -216,15 +222,25 @@ const LiveMap = () => {
         }
       }
 
-      // Prefer driver phone GPS if satellite GPS is stale (> 1 minute old)
+      // Prefer driver phone GPS if satellite GPS is stale (> 1 minute old) or if driver phone is more recent
       if (latestSatelliteGps && latestDriverPhoneGps) {
         const satelliteAge = now - new Date(latestSatelliteGps.recordedAt).getTime();
-        if (satelliteAge > ONE_MINUTE_MS) {
+        const driverPhoneAge = now - new Date(latestDriverPhoneGps.recordedAt).getTime();
+
+        // Use driver phone GPS if:
+        // 1. Satellite GPS is stale (> 1 minute old), OR
+        // 2. Driver phone GPS is more recent than satellite GPS
+        if (satelliteAge > ONE_MINUTE_MS || driverPhoneAge < satelliteAge) {
           latestRealAny = latestDriverPhoneGps;
+        } else {
+          latestRealAny = latestSatelliteGps;
         }
       } else if (latestDriverPhoneGps && !latestSatelliteGps) {
         // Only driver phone GPS available
         latestRealAny = latestDriverPhoneGps;
+      } else if (latestSatelliteGps && !latestDriverPhoneGps) {
+        // Only satellite GPS available
+        latestRealAny = latestSatelliteGps;
       }
 
       // ── Bus markers from active trips ──────────────────────────────────
