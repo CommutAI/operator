@@ -94,6 +94,12 @@ const fetchRouteCoordinates = async (startCoords: [number, number], endCoords: [
   return [startCoords, endCoords];
 };
 
+const isFallbackSource = (source?: string | null): boolean => {
+  if (!source) return true;
+  const lower = String(source).toLowerCase();
+  return lower.includes('anchor') || lower.includes('fallback') || lower.includes('terminal');
+};
+
 const BusMarker = ({ bus, liveCount }: { bus: any; liveCount?: number }) => {
   const displayPassengers = (bus.status === 'active' && typeof liveCount === 'number' && liveCount > 0)
     ? Math.max(bus.passengers || 0, liveCount)
@@ -102,17 +108,31 @@ const BusMarker = ({ bus, liveCount }: { bus: any; liveCount?: number }) => {
   return (
     <Marker position={[bus.lat, bus.lng]}>
       <Popup>
-        <div className="p-2 min-w-[180px]">
-          <h3 className="font-bold text-gray-800">{bus.plate}</h3>
-          <p className="text-sm text-gray-600">{bus.route}</p>
-          <p className="text-xs text-gray-700 mt-2">
+        <div className="p-2 min-w-[200px]">
+          <h3 className="font-bold text-gray-800 text-sm">{bus.plate}</h3>
+          <p className="text-xs text-gray-600">{bus.route}</p>
+          <p className="text-xs text-gray-700 mt-2 font-mono">
             {Number(bus.lat).toFixed(6)}, {Number(bus.lng).toFixed(6)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Source: {bus.locationSource || 'fallback'}
-          </p>
+          
+          <div className="mt-2">
+            {bus.locationSource?.includes('driver_phone') || bus.locationSource?.includes('phone') ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <span>📱</span> Driver Phone GPS (Live)
+              </span>
+            ) : bus.locationSource?.includes('gps') && !isFallbackSource(bus.locationSource) ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <span>🛰️</span> Satellite GPS
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200" title="Stationary at Terminal (No GPS Fix)">
+                <span>📍</span> Terminal (Stationary)
+              </span>
+            )}
+          </div>
+
           {bus.locationUpdatedAt && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 mt-1.5">
               Updated: {new Date(bus.locationUpdatedAt).toLocaleString()}
             </p>
           )}
@@ -227,6 +247,7 @@ export default function Dashboard() {
     const gpsSubscription = supabase
       .channel('dashboard-gps-channel')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gps_locations' }, debouncedGpsFetch)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips' }, debouncedGpsFetch)
       .subscribe();
 
     return () => {
@@ -442,43 +463,87 @@ export default function Dashboard() {
         .order('recorded_at', { ascending: false })
         .limit(100) as any);
 
-      const latestGpsByTripId: Record<string, any> = {};
-      let latestGpsAny: any = null;
-      (gpsRows || []).forEach((row: any) => {
+      // ── Build GPS lookup with strict Real-GPS priority ─────────────────
+      const latestRealByTrip: Record<string, any> = {};
+      let latestRealAny: any = null;
+      let latestFallbackAny: any = null;
+
+      for (const row of (gpsRows || [])) {
+        const lat = parseFloat(row.latitude);
+        const lng = parseFloat(row.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        if (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001) continue;
+
         const gps = {
-          lat: parseFloat(row.latitude),
-          lng: parseFloat(row.longitude),
-          source: row.source || 'gps',
+          lat,
+          lng,
+          source: row.source || 'driver_phone_gps',
           recordedAt: row.recorded_at,
           tripId: row.trip_id || null
         };
 
-        if (!Number.isFinite(gps.lat) || !Number.isFinite(gps.lng)) return;
-        if (!latestGpsAny) latestGpsAny = gps;
-        if (row.trip_id && !latestGpsByTripId[row.trip_id]) {
-          latestGpsByTripId[row.trip_id] = gps;
+        if (isFallbackSource(gps.source)) {
+          if (!latestFallbackAny) latestFallbackAny = gps;
+          continue;
         }
-      });
 
-      // Transform trips to bus markers
-      const busMarkers = (tripsWithBuses || []).map((trip: any, index: number) => {
-        const gps = latestGpsByTripId[trip.id] || latestGpsAny;
+        // Real GPS fix (driver phone or hardware GPS)
+        if (!latestRealAny) latestRealAny = gps;
+        if (row.trip_id && !latestRealByTrip[row.trip_id]) {
+          latestRealByTrip[row.trip_id] = gps;
+        }
+      }
 
-        // Accept any GPS row — Pi sends GPS without trip_id when no trip is active
-        const isValidGps = gps && Number.isFinite(gps.lat) && Number.isFinite(gps.lng) && gps.lat !== 0 && gps.lng !== 0;
-        const lat = isValidGps ? gps.lat : 8.41255083;
-        const lng = isValidGps ? gps.lng : 124.81642417;
+      // Transform trips to bus markers with strict Real-GPS priority
+      const busMarkers = (tripsWithBuses || []).map((trip: any) => {
+        const realGps = latestRealByTrip[trip.id];
+        const hasValidTripCoords =
+          trip.current_lat != null &&
+          trip.current_lng != null &&
+          Math.abs(parseFloat(trip.current_lat)) > 0.001;
+
+        let lat: number;
+        let lng: number;
+        let locationSource: string;
+        let locationUpdatedAt: string | null = null;
+
+        if (realGps) {
+          lat = realGps.lat;
+          lng = realGps.lng;
+          locationSource = realGps.source;
+          locationUpdatedAt = realGps.recordedAt;
+        } else if (hasValidTripCoords) {
+          lat = parseFloat(trip.current_lat);
+          lng = parseFloat(trip.current_lng);
+          locationSource = 'driver_phone_gps';
+          locationUpdatedAt = trip.gps_updated_at;
+        } else if (latestRealAny) {
+          lat = latestRealAny.lat;
+          lng = latestRealAny.lng;
+          locationSource = latestRealAny.source;
+          locationUpdatedAt = latestRealAny.recordedAt;
+        } else if (latestFallbackAny) {
+          lat = latestFallbackAny.lat;
+          lng = latestFallbackAny.lng;
+          locationSource = 'terminal_default';
+          locationUpdatedAt = latestFallbackAny.recordedAt;
+        } else {
+          lat = 8.41255083;
+          lng = 124.81642417;
+          locationSource = 'terminal_default';
+          locationUpdatedAt = null;
+        }
 
         return {
           id: trip.id,
           plate: trip.buses?.bus_number ? String(trip.buses.bus_number) : (trip.buses?.plate_number || 'Unknown'),
           route: trip.buses?.route || 'Unknown',
-          lat: lat,
-          lng: lng,
+          lat,
+          lng,
           passengers: 0,
           status: 'active',
-          locationSource: gps ? (gps.tripId ? gps.source : `${gps.source} (latest GPS)`) : 'fallback',
-          locationUpdatedAt: gps?.recordedAt || trip.gps_updated_at || null,
+          locationSource,
+          locationUpdatedAt,
           busId: trip.bus_id,
           tripId: trip.id
         };
@@ -491,9 +556,9 @@ export default function Dashboard() {
           || (allBuses || [])[0];
 
         if (activeBus) {
-          const isValidGps = latestGpsAny && Number.isFinite(latestGpsAny.lat) && Number.isFinite(latestGpsAny.lng) && latestGpsAny.lat !== 0 && latestGpsAny.lng !== 0;
-          const lat = isValidGps ? latestGpsAny.lat : 8.41255083;
-          const lng = isValidGps ? latestGpsAny.lng : 124.81642417;
+          const bestAnyGps = latestRealAny || latestFallbackAny;
+          const lat = bestAnyGps ? bestAnyGps.lat : 8.41255083;
+          const lng = bestAnyGps ? bestAnyGps.lng : 124.81642417;
 
           busMarkers.push({
             id: activeBus.id || 'bus-live-gps',
@@ -503,8 +568,8 @@ export default function Dashboard() {
             lng: lng,
             passengers: 0,
             status: 'active',
-            locationSource: latestGpsAny ? `${latestGpsAny.source} (latest GPS)` : 'fallback',
-            locationUpdatedAt: latestGpsAny?.recordedAt || null,
+            locationSource: bestAnyGps ? bestAnyGps.source : 'terminal_default',
+            locationUpdatedAt: bestAnyGps?.recordedAt || null,
             busId: activeBus.id,
             tripId: null
           });
