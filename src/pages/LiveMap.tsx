@@ -173,10 +173,15 @@ const LiveMap = () => {
       const allBuses: any[]    = busesRes.data || [];
       const gpsRows: any[]     = gpsRes.data   || [];
 
-      // ── Build GPS lookup with strict Real-GPS priority ─────────────────
+      // ── Build GPS lookup with driver phone GPS priority when satellite GPS is stale ─────────────────
       const latestRealByTrip: Record<string, any> = {};
       let latestRealAny: any = null;
       let latestFallbackAny: any = null;
+      let latestDriverPhoneGps: any = null;
+      let latestSatelliteGps: any = null;
+
+      const ONE_MINUTE_MS = 60 * 1000;
+      const now = Date.now();
 
       for (const row of gpsRows) {
         const lat = parseFloat(row.latitude);
@@ -197,11 +202,29 @@ const LiveMap = () => {
           continue;
         }
 
+        // Track latest driver phone GPS and satellite GPS separately
+        if (gps.source === 'driver_phone_gps') {
+          if (!latestDriverPhoneGps) latestDriverPhoneGps = gps;
+        } else if (gps.source === 'gps') {
+          if (!latestSatelliteGps) latestSatelliteGps = gps;
+        }
+
         // Real GPS fix (driver phone or hardware GPS)
         if (!latestRealAny) latestRealAny = gps;
         if (row.trip_id && !latestRealByTrip[row.trip_id]) {
           latestRealByTrip[row.trip_id] = gps;
         }
+      }
+
+      // Prefer driver phone GPS if satellite GPS is stale (> 1 minute old)
+      if (latestSatelliteGps && latestDriverPhoneGps) {
+        const satelliteAge = now - new Date(latestSatelliteGps.recordedAt).getTime();
+        if (satelliteAge > ONE_MINUTE_MS) {
+          latestRealAny = latestDriverPhoneGps;
+        }
+      } else if (latestDriverPhoneGps && !latestSatelliteGps) {
+        // Only driver phone GPS available
+        latestRealAny = latestDriverPhoneGps;
       }
 
       // ── Bus markers from active trips ──────────────────────────────────
@@ -233,6 +256,12 @@ const LiveMap = () => {
           lng = latestRealAny.lng;
           locationSource = latestRealAny.source;
           locationUpdatedAt = latestRealAny.recordedAt;
+        } else if (latestDriverPhoneGps) {
+          // Fallback to driver phone GPS if no other real GPS available
+          lat = latestDriverPhoneGps.lat;
+          lng = latestDriverPhoneGps.lng;
+          locationSource = latestDriverPhoneGps.source;
+          locationUpdatedAt = latestDriverPhoneGps.recordedAt;
         } else if (latestFallbackAny) {
           lat = latestFallbackAny.lat;
           lng = latestFallbackAny.lng;
@@ -262,7 +291,7 @@ const LiveMap = () => {
 
       // ── GPS pin when no trip covers that location OR when there are no active trips ────────────────────────
       const gpsPins: BusData[] = [];
-      const bestAnyGps = latestRealAny || latestFallbackAny;
+      const bestAnyGps = latestRealAny || latestDriverPhoneGps || latestFallbackAny;
 
       // Always show GPS pin if we have real GPS data, regardless of active trips
       if (bestAnyGps) {
