@@ -47,8 +47,8 @@ sudo journalctl -u video-server -f
 
 ### Supabase Connection
 ```env
-SUPABASE_URL=https://iyacktzzktwrpeibcena.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_URL=your-supabase-project-url
+SUPABASE_KEY=your-supabase-anon-key
 ```
 
 ### Bus Configuration

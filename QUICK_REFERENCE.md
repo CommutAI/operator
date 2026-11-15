@@ -50,18 +50,18 @@ vercel
 
 ### Local (.env file)
 ```env
-VITE_SUPABASE_URL=https://iyacktzzktwrpeibcena.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-VITE_BACKEND_URL=https://hertz-osmosis-squiggly.ngrok-free.dev
+VITE_SUPABASE_URL=your-supabase-project-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_BACKEND_URL=your-backend-url
 VITE_RASPBERRY_PI_URL=
 VITE_SMS_SERVER_URL=http://localhost:3001
 ```
 
 ### Vercel (Production)
 ```env
-VITE_SUPABASE_URL=https://iyacktzzktwrpeibcena.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-VITE_BACKEND_URL=https://sys-admin.lopezkristine749.workers.dev
+VITE_SUPABASE_URL=your-supabase-project-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_BACKEND_URL=your-backend-url
 VITE_RASPBERRY_PI_URL=
 VITE_SMS_SERVER_URL=
 ```

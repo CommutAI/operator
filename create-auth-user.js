@@ -1,5 +1,5 @@
-const supabaseUrl = 'https://iyacktzzktwrpeibcena.supabase.co';
-const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5YWNrdHp6a3R3cnBlaWJjZW5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzAxMzMsImV4cCI6MjEwNjY0NjEzM30.nnUW_wjKE9t6V_ZNNR1u_HqcqQletGEsJ4A2kcBLxl0';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'your-supabase-project-url';
+const anonKey = process.env.VITE_SUPABASE_ANON_KEY || 'your-supabase-anon-key';
 
 async function checkAuthUser() {
   const email = 'operator@commutai.local';

@@ -31,11 +31,11 @@ Your operator frontend connects to three services:
 Your `.env` file has been updated with:
 
 ```env
-VITE_SUPABASE_URL=https://iyacktzzktwrpeibcena.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_SUPABASE_URL=your-supabase-project-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 # Backend API - Use ngrok tunnel or Cloudflare worker
-VITE_BACKEND_URL=https://hertz-osmosis-squiggly.ngrok-free.dev
+VITE_BACKEND_URL=your-backend-url
 
 # Raspberry Pi URL (auto-discovered from database or manual)
 VITE_RASPBERRY_PI_URL=
@@ -96,10 +96,10 @@ app.add_middleware(
 Go to your Vercel project settings → Environment Variables → Add:
 
 ```
-VITE_SUPABASE_URL=https://iyacktzzktwrpeibcena.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5YWNrdHp6a3R3cnBlaWJjZW5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzAxMzMsImV4cCI6MjEwNjY0NjEzM30.nnUW_wjKE9t6V_ZNNR1u_HqcqQletGEsJ4A2kcBLxl0
+VITE_SUPABASE_URL=your-supabase-project-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
-VITE_BACKEND_URL=https://sys-admin.lopezkristine749.workers.dev
+VITE_BACKEND_URL=your-backend-url
 # OR use ngrok URL (but ngrok URLs expire unless you have a paid plan)
 
 VITE_RASPBERRY_PI_URL=

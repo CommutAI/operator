@@ -27,10 +27,10 @@ Add these in your Vercel dashboard:
 
 | Variable Name | Value | Environment |
 |--------------|-------|-------------|
-| `VITE_SUPABASE_URL` | `https://iyacktzzktwrpeibcena.supabase.co` | Production, Preview, Development |
-| `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5YWNrdHp6a3R3cnBlaWJjZW5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzAxMzMsImV4cCI6MjEwNjY0NjEzM30.nnUW_wjKE9t6V_ZNNR1u_HqcqQletGEsJ4A2kcBLxl0` | Production, Preview, Development |
-| `VITE_BACKEND_URL` | `https://sys-admin.lopezkristine749.workers.dev` | Production |
-| `VITE_BACKEND_URL` | `https://hertz-osmosis-squiggly.ngrok-free.dev` | Preview, Development (optional) |
+| `VITE_SUPABASE_URL` | `your-supabase-project-url` | Production, Preview, Development |
+| `VITE_SUPABASE_ANON_KEY` | `your-supabase-anon-key` | Production, Preview, Development |
+| `VITE_BACKEND_URL` | `your-backend-url` | Production |
+| `VITE_BACKEND_URL` | `your-backend-url` | Preview, Development (optional) |
 | `VITE_RASPBERRY_PI_URL` | *(leave empty)* | All environments |
 | `VITE_SMS_SERVER_URL` | *(leave empty)* | All environments |
 
