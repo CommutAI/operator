@@ -260,12 +260,16 @@ const LiveMap = () => {
         };
       });
 
-      // ── GPS pin when no trip covers that location ────────────────────────
+      // ── GPS pin when no trip covers that location OR when there are no active trips ────────────────────────
       const gpsPins: BusData[] = [];
       const bestAnyGps = latestRealAny || latestFallbackAny;
+
+      // Always show GPS pin if we have real GPS data, regardless of active trips
       if (bestAnyGps) {
         const covered = busMarkers.some(b => Math.abs(b.lat - bestAnyGps.lat) < 0.0001 && Math.abs(b.lng - bestAnyGps.lng) < 0.0001);
-        if (!covered) {
+
+        // Show GPS pin if: not covered by existing marker OR no active trips exist
+        if (!covered || activeTrips.length === 0) {
           const pisBus = allBuses.find((b: any) => b.status === 'active')
             || allBuses.find((b: any) => b.bus_number === 1001 || b.bus_number === 1)
             || allBuses[0];
