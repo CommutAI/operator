@@ -143,27 +143,49 @@ export default function Reports() {
   const availableColumns = {
     trips: [
       { id: 'id', label: 'Trip ID' },
-      { id: 'bus_id', label: 'Bus ID' },
+      { id: 'bus_number', label: 'Bus Number' },
+      { id: 'plate_number', label: 'Plate Number' },
+      { id: 'route', label: 'Route' },
       { id: 'starting_point', label: 'Start Point' },
       { id: 'end_point', label: 'End Point' },
-      { id: 'conductor_id', label: 'Conductor ID' },
-      { id: 'driver_id', label: 'Driver ID' },
+      { id: 'conductor_name', label: 'Conductor Name' },
+      { id: 'driver_name', label: 'Driver Name' },
       { id: 'status', label: 'Status' },
       { id: 'total_passengers', label: 'Passengers' },
       { id: 'total_fares', label: 'Total Fares' },
+      { id: 'incidents', label: 'Incidents' },
+      { id: 'expected_duration', label: 'Expected Duration (min)' },
+      { id: 'actual_duration', label: 'Actual Duration (min)' },
+      { id: 'current_lat', label: 'Current Latitude' },
+      { id: 'current_lng', label: 'Current Longitude' },
+      { id: 'gps_updated_at', label: 'GPS Updated At' },
       { id: 'started_at', label: 'Started At' },
       { id: 'ended_at', label: 'Ended At' },
+      { id: 'notes', label: 'Notes' },
+      { id: 'created_at', label: 'Created At' },
     ],
     revenue: [
       { id: 'id', label: 'Transaction ID' },
       { id: 'transaction_type', label: 'Type' },
       { id: 'amount', label: 'Amount' },
-      { id: 'fare_amount', label: 'Fare' },
+      { id: 'fare_amount', label: 'Fare Amount' },
+      { id: 'discount_amount', label: 'Discount Amount' },
+      { id: 'baggage_category', label: 'Baggage Category' },
+      { id: 'baggage_weight', label: 'Baggage Weight' },
       { id: 'baggage_fee', label: 'Baggage Fee' },
       { id: 'payment_method', label: 'Payment Method' },
-      { id: 'card_id', label: 'Card ID' },
-      { id: 'staff_id', label: 'Staff ID' },
+      { id: 'card_uid', label: 'Card UID' },
+      { id: 'owner_name', label: 'Card Owner' },
+      { id: 'staff_name', label: 'Staff Name' },
       { id: 'trip_id', label: 'Trip ID' },
+      { id: 'trip_start', label: 'Trip Start Point' },
+      { id: 'trip_end', label: 'Trip End Point' },
+      { id: 'passenger_name', label: 'Passenger Name' },
+      { id: 'from_stop', label: 'From Stop' },
+      { id: 'to_stop', label: 'To Stop' },
+      { id: 'channel', label: 'Channel' },
+      { id: 'status', label: 'Status' },
+      { id: 'recorded_at', label: 'Recorded At' },
       { id: 'created_at', label: 'Created At' },
     ],
     card_reload: [
@@ -171,16 +193,26 @@ export default function Reports() {
       { id: 'card_id', label: 'Card ID' },
       { id: 'card_uid', label: 'Card UID' },
       { id: 'owner_name', label: 'Card Owner' },
+      { id: 'contact_number', label: 'Contact Number' },
+      { id: 'email', label: 'Email' },
+      { id: 'card_type', label: 'Card Type' },
+      { id: 'card_status', label: 'Card Status' },
       { id: 'amount', label: 'Amount' },
+      { id: 'balance_before', label: 'Balance Before' },
+      { id: 'balance_after', label: 'Balance After' },
       { id: 'reload_method', label: 'Reload Method' },
       { id: 'reference_number', label: 'Reference No.' },
       { id: 'reload_location', label: 'Location' },
-      { id: 'status', label: 'Status' },
+      { id: 'status', label: 'Reload Status' },
       { id: 'recorded_at', label: 'Recorded At' },
+      { id: 'created_at', label: 'Created At' },
     ],
     irregularity: [
       { id: 'id', label: 'Irregularity ID' },
       { id: 'trip_id', label: 'Trip ID' },
+      { id: 'bus_number', label: 'Bus Number' },
+      { id: 'route', label: 'Route' },
+      { id: 'conductor_name', label: 'Conductor Name' },
       { id: 'type', label: 'Type' },
       { id: 'anomaly_type', label: 'Anomaly Type' },
       { id: 'severity', label: 'Severity' },
@@ -196,12 +228,14 @@ export default function Reports() {
     anomaly: [
       { id: 'id', label: 'ID' },
       { id: 'trip_id', label: 'Trip ID' },
+      { id: 'bus_number', label: 'Bus Number' },
+      { id: 'route', label: 'Route' },
       { id: 'anomaly_type', label: 'Anomaly Type' },
       { id: 'severity', label: 'Severity' },
       { id: 'description', label: 'Description' },
       { id: 'status', label: 'Status' },
-      { id: 'escalation_level', label: 'Escalation Level' },
       { id: 'resolved', label: 'Resolved' },
+      { id: 'escalation_level', label: 'Escalation Level' },
       { id: 'investigation_notes', label: 'Investigation Notes' },
       { id: 'detected_at', label: 'Detected At' },
     ],
@@ -216,17 +250,17 @@ export default function Reports() {
   // ── removed duplicate useEffect that also called fetchStats/fetchRecentActivity/fetchTransactions ──
 
   useEffect(() => {
-    // Initialize with only a few key columns instead of all columns
+    // Initialize with comprehensive columns for audit report
     if (reportType === 'trips') {
-      setSelectedExportColumns(['id', 'bus_id', 'status', 'total_passengers', 'total_fares', 'started_at']);
+      setSelectedExportColumns(['id', 'bus_number', 'plate_number', 'route', 'starting_point', 'end_point', 'conductor_name', 'driver_name', 'status', 'total_passengers', 'total_fares', 'started_at', 'ended_at']);
     } else if (reportType === 'revenue') {
-      setSelectedExportColumns(['id', 'transaction_type', 'amount', 'payment_method', 'created_at']);
+      setSelectedExportColumns(['id', 'transaction_type', 'amount', 'fare_amount', 'payment_method', 'card_uid', 'owner_name', 'staff_name', 'trip_id', 'trip_start', 'trip_end', 'created_at']);
     } else if (reportType === 'card_reload') {
-      setSelectedExportColumns(['id', 'card_uid', 'owner_name', 'amount', 'reload_method', 'status', 'recorded_at']);
+      setSelectedExportColumns(['id', 'card_uid', 'owner_name', 'contact_number', 'email', 'card_type', 'card_status', 'amount', 'balance_after', 'reload_method', 'reference_number', 'reload_location', 'status', 'recorded_at']);
     } else if (reportType === 'irregularity') {
-      setSelectedExportColumns(['id', 'trip_id', 'type', 'severity', 'status', 'resolved', 'detected_at']);
+      setSelectedExportColumns(['id', 'trip_id', 'bus_number', 'route', 'conductor_name', 'type', 'anomaly_type', 'severity', 'description', 'status', 'resolved', 'escalation_level', 'detected_at', 'resolved_at']);
     } else if (reportType === 'anomaly') {
-      setSelectedExportColumns(['id', 'trip_id', 'anomaly_type', 'severity', 'status', 'resolved', 'detected_at']);
+      setSelectedExportColumns(['id', 'trip_id', 'bus_number', 'route', 'anomaly_type', 'severity', 'description', 'status', 'resolved', 'escalation_level', 'detected_at']);
     }
     setReportGenerated(false);
     setGeneratedReport([]);
@@ -405,83 +439,136 @@ export default function Reports() {
     setLoading(true);
     let reportData: any[] = [];
 
-    console.log('Generating report for type:', reportType);
+    console.log('Generating comprehensive audit report for type:', reportType);
     console.log('Selected columns:', selectedExportColumns);
 
     try {
       if (reportType === 'trips') {
-        // Fetch trips with minimal fields first
+        // Fetch all trips with comprehensive data
         const { data: tripsData, error: tripsError } = await supabase
           .from('trips')
-          .select('id, bus_id, starting_point, end_point, conductor_id, driver_id, status, total_passengers, total_fares, started_at, ended_at')
+          .select('*')
           .order('started_at', { ascending: false })
-          .limit(100);
+          .limit(1000);
 
         if (tripsError) {
           console.error('Supabase error fetching trips:', tripsError);
           throw new Error(tripsError.message || 'Failed to fetch trips data');
         }
 
-        console.log('Trips data from DB:', tripsData);
-
         if (!tripsData || tripsData.length === 0) {
           alert('No trips found in database');
         } else {
-          // Fetch buses separately
+          // Fetch related data
           const busIds = tripsData.map(t => t.bus_id).filter(Boolean);
-          const { data: busesData } = await supabase
-            .from('buses')
-            .select('id, bus_number, plate_number')
-            .in('id', busIds);
+          const conductorIds = tripsData.map(t => t.conductor_id).filter(Boolean);
+          const driverIds = tripsData.map(t => t.driver_id).filter(Boolean);
 
-          const busesMap = new Map((busesData || []).map(b => [b.id, b]));
+          const [busesData, conductorsData, driversData] = await Promise.all([
+            supabase.from('buses').select('*').in('id', busIds),
+            supabase.from('staff_users').select('id, full_name').in('id', conductorIds),
+            supabase.from('staff_users').select('id, full_name').in('id', driverIds),
+          ]);
+
+          const busesMap = new Map((busesData.data || []).map(b => [b.id, b]));
+          const conductorsMap = new Map((conductorsData.data || []).map(c => [c.id, c]));
+          const driversMap = new Map((driversData.data || []).map(d => [d.id, d]));
 
           reportData = tripsData.map((trip: any) => {
             const bus = busesMap.get(trip.bus_id);
+            const conductor = conductorsMap.get(trip.conductor_id);
+            const driver = driversMap.get(trip.driver_id);
+
+            // Calculate actual duration
+            let actualDuration = 'N/A';
+            if (trip.started_at && trip.ended_at) {
+              const duration = (new Date(trip.ended_at).getTime() - new Date(trip.started_at).getTime()) / 60000;
+              actualDuration = Math.round(duration).toString();
+            }
+
             const row: any = {};
             if (selectedExportColumns.includes('id')) row['Trip ID'] = trip.id || 'N/A';
-            if (selectedExportColumns.includes('bus_id')) row['Bus ID'] = bus?.bus_number || bus?.plate_number || 'N/A';
+            if (selectedExportColumns.includes('bus_number')) row['Bus Number'] = bus?.bus_number || 'N/A';
+            if (selectedExportColumns.includes('plate_number')) row['Plate Number'] = bus?.plate_number || 'N/A';
+            if (selectedExportColumns.includes('route')) row['Route'] = bus?.route || 'N/A';
             if (selectedExportColumns.includes('starting_point')) row['Start Point'] = trip.starting_point || 'N/A';
             if (selectedExportColumns.includes('end_point')) row['End Point'] = trip.end_point || 'N/A';
-            if (selectedExportColumns.includes('conductor_id')) row['Conductor ID'] = trip.conductor_id?.slice(0, 8) || 'N/A';
-            if (selectedExportColumns.includes('driver_id')) row['Driver ID'] = trip.driver_id?.slice(0, 8) || 'N/A';
+            if (selectedExportColumns.includes('conductor_name')) row['Conductor Name'] = conductor?.full_name || 'N/A';
+            if (selectedExportColumns.includes('driver_name')) row['Driver Name'] = driver?.full_name || 'N/A';
             if (selectedExportColumns.includes('status')) row['Status'] = trip.status || 'N/A';
             if (selectedExportColumns.includes('total_passengers')) row['Passengers'] = trip.total_passengers ?? 'N/A';
-            if (selectedExportColumns.includes('total_fares')) row['Total Fares'] = trip.total_fares ?? 'N/A';
+            if (selectedExportColumns.includes('total_fares')) row['Total Fares'] = trip.total_fares ? `₱${Number(trip.total_fares).toFixed(2)}` : 'N/A';
+            if (selectedExportColumns.includes('incidents')) row['Incidents'] = trip.incidents ?? 0;
+            if (selectedExportColumns.includes('expected_duration')) row['Expected Duration (min)'] = trip.expected_duration_minutes || 'N/A';
+            if (selectedExportColumns.includes('actual_duration')) row['Actual Duration (min)'] = actualDuration;
+            if (selectedExportColumns.includes('current_lat')) row['Current Latitude'] = trip.current_lat || 'N/A';
+            if (selectedExportColumns.includes('current_lng')) row['Current Longitude'] = trip.current_lng || 'N/A';
+            if (selectedExportColumns.includes('gps_updated_at')) row['GPS Updated At'] = trip.gps_updated_at ? new Date(trip.gps_updated_at).toLocaleString() : 'N/A';
             if (selectedExportColumns.includes('started_at')) row['Started At'] = trip.started_at ? new Date(trip.started_at).toLocaleString() : 'N/A';
             if (selectedExportColumns.includes('ended_at')) row['Ended At'] = trip.ended_at ? new Date(trip.ended_at).toLocaleString() : 'N/A';
+            if (selectedExportColumns.includes('notes')) row['Notes'] = trip.notes || 'N/A';
+            if (selectedExportColumns.includes('created_at')) row['Created At'] = trip.created_at ? new Date(trip.created_at).toLocaleString() : 'N/A';
             return row;
           });
         }
       } else if (reportType === 'revenue') {
-        // Fetch transactions with minimal fields
+        // Fetch all transactions with comprehensive data
         const { data: transactionsData, error: txError } = await supabase
           .from('transactions')
-          .select('id, transaction_type, amount, fare_amount, baggage_fee, payment_method, card_id, staff_id, trip_id, created_at')
+          .select('*')
           .order('created_at', { ascending: false })
-          .limit(100);
+          .limit(2000);
 
         if (txError) {
           console.error('Supabase error fetching transactions:', txError);
           throw new Error(txError.message || 'Failed to fetch transactions data');
         }
 
-        console.log('Transactions data from DB:', transactionsData);
-
         if (!transactionsData || transactionsData.length === 0) {
           alert('No transactions found in database');
         } else {
+          // Fetch related data
+          const cardIds = transactionsData.map(t => t.card_id).filter(Boolean);
+          const staffIds = transactionsData.map(t => t.staff_id).filter(Boolean);
+          const tripIds = transactionsData.map(t => t.trip_id).filter(Boolean);
+
+          const [cardsData, staffData, tripsData] = await Promise.all([
+            supabase.from('qr_cards').select('*').in('id', cardIds),
+            supabase.from('staff_users').select('id, full_name').in('id', staffIds),
+            supabase.from('trips').select('id, starting_point, end_point').in('id', tripIds),
+          ]);
+
+          const cardsMap = new Map((cardsData.data || []).map(c => [c.id, c]));
+          const staffMap = new Map((staffData.data || []).map(s => [s.id, s]));
+          const tripsMap = new Map((tripsData.data || []).map(t => [t.id, t]));
+
           reportData = transactionsData.map((tx: any) => {
+            const card = cardsMap.get(tx.card_id);
+            const staff = staffMap.get(tx.staff_id);
+            const trip = tripsMap.get(tx.trip_id);
+
             const row: any = {};
             if (selectedExportColumns.includes('id')) row['Transaction ID'] = tx.id || 'N/A';
             if (selectedExportColumns.includes('transaction_type')) row['Type'] = tx.transaction_type || 'N/A';
-            if (selectedExportColumns.includes('amount')) row['Amount'] = tx.amount || 'N/A';
-            if (selectedExportColumns.includes('fare_amount')) row['Fare'] = tx.fare_amount || 'N/A';
-            if (selectedExportColumns.includes('baggage_fee')) row['Baggage Fee'] = tx.baggage_fee || 'N/A';
+            if (selectedExportColumns.includes('amount')) row['Amount'] = tx.amount ? `₱${Number(tx.amount).toFixed(2)}` : 'N/A';
+            if (selectedExportColumns.includes('fare_amount')) row['Fare Amount'] = tx.fare_amount ? `₱${Number(tx.fare_amount).toFixed(2)}` : 'N/A';
+            if (selectedExportColumns.includes('discount_amount')) row['Discount Amount'] = tx.discount_amount ? `₱${Number(tx.discount_amount).toFixed(2)}` : 'N/A';
+            if (selectedExportColumns.includes('baggage_category')) row['Baggage Category'] = tx.baggage_category || 'N/A';
+            if (selectedExportColumns.includes('baggage_weight')) row['Baggage Weight'] = tx.baggage_weight || 'N/A';
+            if (selectedExportColumns.includes('baggage_fee')) row['Baggage Fee'] = tx.baggage_fee ? `₱${Number(tx.baggage_fee).toFixed(2)}` : 'N/A';
             if (selectedExportColumns.includes('payment_method')) row['Payment Method'] = tx.payment_method || 'N/A';
-            if (selectedExportColumns.includes('card_id')) row['Card ID'] = tx.card_id || 'N/A';
-            if (selectedExportColumns.includes('staff_id')) row['Staff ID'] = tx.staff_id || 'N/A';
+            if (selectedExportColumns.includes('card_uid')) row['Card UID'] = card?.card_uid || 'N/A';
+            if (selectedExportColumns.includes('owner_name')) row['Card Owner'] = card?.owner_name || 'N/A';
+            if (selectedExportColumns.includes('staff_name')) row['Staff Name'] = staff?.full_name || 'N/A';
             if (selectedExportColumns.includes('trip_id')) row['Trip ID'] = tx.trip_id || 'N/A';
+            if (selectedExportColumns.includes('trip_start')) row['Trip Start Point'] = trip?.starting_point || 'N/A';
+            if (selectedExportColumns.includes('trip_end')) row['Trip End Point'] = trip?.end_point || 'N/A';
+            if (selectedExportColumns.includes('passenger_name')) row['Passenger Name'] = tx.passenger_name || 'N/A';
+            if (selectedExportColumns.includes('from_stop')) row['From Stop'] = tx.from_stop_id || 'N/A';
+            if (selectedExportColumns.includes('to_stop')) row['To Stop'] = tx.to_stop_id || 'N/A';
+            if (selectedExportColumns.includes('channel')) row['Channel'] = tx.channel || 'N/A';
+            if (selectedExportColumns.includes('status')) row['Status'] = tx.status || 'N/A';
+            if (selectedExportColumns.includes('recorded_at')) row['Recorded At'] = tx.recorded_at ? new Date(tx.recorded_at).toLocaleString() : 'N/A';
             if (selectedExportColumns.includes('created_at')) row['Created At'] = tx.created_at ? new Date(tx.created_at).toLocaleString() : 'N/A';
             return row;
           });
@@ -489,34 +576,47 @@ export default function Reports() {
       } else if (reportType === 'card_reload') {
         const { data: reloadData, error: reloadError } = await supabase
           .from('card_reloads')
-          .select('id, card_id, amount, reload_method, reference_number, reload_location, status, recorded_at, created_at, qr_cards(card_uid, owner_name)')
+          .select('*')
           .order('recorded_at', { ascending: false })
-          .limit(500);
+          .limit(1000);
 
         if (reloadError) throw new Error(reloadError.message || 'Failed to fetch card reload data');
 
         if (!reloadData || reloadData.length === 0) {
           alert('No card reload records found in database');
         } else {
+          // Fetch card details
+          const cardIds = reloadData.map(r => r.card_id).filter(Boolean);
+          const { data: cardsData } = await supabase.from('qr_cards').select('*').in('id', cardIds);
+          const cardsMap = new Map((cardsData || []).map(c => [c.id, c]));
+
           reportData = reloadData.map((r: any) => {
+            const card = cardsMap.get(r.card_id);
             const row: any = {};
             if (selectedExportColumns.includes('id')) row['Reload ID'] = r.id || 'N/A';
             if (selectedExportColumns.includes('card_id')) row['Card ID'] = r.card_id || 'N/A';
-            if (selectedExportColumns.includes('card_uid')) row['Card UID'] = r.qr_cards?.card_uid || 'N/A';
-            if (selectedExportColumns.includes('owner_name')) row['Card Owner'] = r.qr_cards?.owner_name || 'N/A';
+            if (selectedExportColumns.includes('card_uid')) row['Card UID'] = card?.card_uid || 'N/A';
+            if (selectedExportColumns.includes('owner_name')) row['Card Owner'] = card?.owner_name || 'N/A';
+            if (selectedExportColumns.includes('contact_number')) row['Contact Number'] = card?.contact_number || 'N/A';
+            if (selectedExportColumns.includes('email')) row['Email'] = card?.email || 'N/A';
+            if (selectedExportColumns.includes('card_type')) row['Card Type'] = card?.card_type || 'N/A';
+            if (selectedExportColumns.includes('card_status')) row['Card Status'] = card?.status || 'N/A';
             if (selectedExportColumns.includes('amount')) row['Amount'] = r.amount ? `₱${Number(r.amount).toFixed(2)}` : 'N/A';
+            if (selectedExportColumns.includes('balance_before')) row['Balance Before'] = r.balance_before ? `₱${Number(r.balance_before).toFixed(2)}` : 'N/A';
+            if (selectedExportColumns.includes('balance_after')) row['Balance After'] = r.balance_after ? `₱${Number(r.balance_after).toFixed(2)}` : 'N/A';
             if (selectedExportColumns.includes('reload_method')) row['Reload Method'] = r.reload_method || 'N/A';
             if (selectedExportColumns.includes('reference_number')) row['Reference No.'] = r.reference_number || 'N/A';
             if (selectedExportColumns.includes('reload_location')) row['Location'] = r.reload_location || 'N/A';
-            if (selectedExportColumns.includes('status')) row['Status'] = r.status || 'N/A';
+            if (selectedExportColumns.includes('status')) row['Reload Status'] = r.status || 'N/A';
             if (selectedExportColumns.includes('recorded_at')) row['Recorded At'] = r.recorded_at ? new Date(r.recorded_at).toLocaleString() : 'N/A';
+            if (selectedExportColumns.includes('created_at')) row['Created At'] = r.created_at ? new Date(r.created_at).toLocaleString() : 'N/A';
             return row;
           });
         }
       } else if (reportType === 'irregularity' || reportType === 'anomaly') {
         const query = reportType === 'anomaly'
-          ? supabase.from('fare_irregularities').select('id, trip_id, type, description, detected_at, resolved, resolved_at, severity, anomaly_type, status, investigation_notes, resolution_notes, escalation_level').not('anomaly_type', 'is', null).order('detected_at', { ascending: false }).limit(500)
-          : supabase.from('fare_irregularities').select('id, trip_id, type, description, detected_at, resolved, resolved_at, severity, anomaly_type, status, investigation_notes, resolution_notes, escalation_level').order('detected_at', { ascending: false }).limit(500);
+          ? supabase.from('fare_irregularities').select('*').not('anomaly_type', 'is', null).order('detected_at', { ascending: false }).limit(1000)
+          : supabase.from('fare_irregularities').select('*').order('detected_at', { ascending: false }).limit(1000);
 
         const { data: irData, error: irError } = await query;
 
@@ -525,10 +625,32 @@ export default function Reports() {
         if (!irData || irData.length === 0) {
           alert(`No ${reportType === 'anomaly' ? 'anomaly' : 'irregularity'} records found in database`);
         } else {
+          // Fetch related trip and bus data
+          const tripIds = irData.map(ir => ir.trip_id).filter(Boolean);
+          const { data: tripsData } = await supabase.from('trips').select('id, bus_id, conductor_id').in('id', tripIds);
+          const busIds = (tripsData || []).map(t => t.bus_id).filter(Boolean);
+          const conductorIds = (tripsData || []).map(t => t.conductor_id).filter(Boolean);
+
+          const [busesData, conductorsData] = await Promise.all([
+            supabase.from('buses').select('*').in('id', busIds),
+            supabase.from('staff_users').select('id, full_name').in('id', conductorIds),
+          ]);
+
+          const tripsMap = new Map((tripsData || []).map(t => [t.id, t]));
+          const busesMap = new Map((busesData.data || []).map(b => [b.id, b]));
+          const conductorsMap = new Map((conductorsData.data || []).map(c => [c.id, c]));
+
           reportData = irData.map((ir: any) => {
+            const trip = tripsMap.get(ir.trip_id);
+            const bus = trip ? busesMap.get(trip.bus_id) : null;
+            const conductor = trip ? conductorsMap.get(trip.conductor_id) : null;
+
             const row: any = {};
             if (selectedExportColumns.includes('id')) row['ID'] = ir.id || 'N/A';
             if (selectedExportColumns.includes('trip_id')) row['Trip ID'] = ir.trip_id || 'N/A';
+            if (selectedExportColumns.includes('bus_number')) row['Bus Number'] = bus?.bus_number || 'N/A';
+            if (selectedExportColumns.includes('route')) row['Route'] = bus?.route || 'N/A';
+            if (selectedExportColumns.includes('conductor_name')) row['Conductor Name'] = conductor?.full_name || 'N/A';
             if (selectedExportColumns.includes('type')) row['Type'] = ir.type || 'N/A';
             if (selectedExportColumns.includes('anomaly_type')) row['Anomaly Type'] = ir.anomaly_type || 'N/A';
             if (selectedExportColumns.includes('severity')) row['Severity'] = ir.severity || 'N/A';
@@ -545,7 +667,7 @@ export default function Reports() {
         }
       }
 
-      console.log('Generated report data:', reportData);
+      console.log('Generated comprehensive report data:', reportData);
       setGeneratedReport(reportData);
       setReportGenerated(true);
       setShowExportColumns(false);
@@ -568,10 +690,24 @@ export default function Reports() {
       return col ? col.label : colId;
     });
     const rows = generatedReport;
-    const fileName = `${reportType}_report`;
+    const fileName = `${reportType}_comprehensive_audit`;
 
-    const csvContent = [headers, ...rows.map(r => Object.values(r))].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    // Properly escape CSV values
+    const escapeCSV = (value: any) => {
+      if (value === null || value === undefined) return '';
+      const strValue = String(value);
+      if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+        return `"${strValue.replace(/"/g, '""')}"`;
+      }
+      return strValue;
+    };
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => headers.map(h => escapeCSV(r[h])).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
