@@ -11,6 +11,8 @@ import AIMonitoring from './pages/AIMonitoring';
 import Transactions from './pages/Transactions';
 import Reports from './pages/Reports';
 import TripManagement from './pages/TripManagement';
+import TripHistory from './pages/TripHistory';
+import FareMatrix from './pages/FareMatrix';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,6 +55,8 @@ function App() {
             >
               <Route index element={<Dashboard />} />
               <Route path="trips" element={<TripManagement />} />
+              <Route path="trip-history" element={<TripHistory />} />
+              <Route path="fare-matrix" element={<FareMatrix />} />
               <Route path="transactions" element={<Transactions />} />
               <Route path="reports" element={<Reports />} />
               <Route path="ai-monitoring" element={<AIMonitoring />} />

@@ -10,7 +10,9 @@ import {
   LogOut,
   Menu,
   X,
-  Bus
+  Bus,
+  Clock,
+  DollarSign
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boolean) => void }) => {
@@ -26,6 +28,8 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/trips', icon: Bus, label: 'Trip Management' },
+    { path: '/trip-history', icon: Clock, label: 'Trip History' },
+    { path: '/fare-matrix', icon: DollarSign, label: 'Fare Matrix' },
     { path: '/transactions', icon: Receipt, label: 'Card Management' },
     { path: '/reports', icon: FileText, label: 'Reports' },
     { path: '/ai-monitoring', icon: Brain, label: 'AI Monitoring' },

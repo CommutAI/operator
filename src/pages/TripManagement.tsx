@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Search, Bus, MapPin, CheckCircle, Clock, ChevronLeft, ChevronRight, Video, Play, Download, X, AlertTriangle, Receipt, Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -175,10 +176,19 @@ export default function TripManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Trip Management</h1>
           <p className="text-white/60">Monitor and manage active bus trips</p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/trip-history"
+            className="flex items-center gap-2 px-4 py-2.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/30 rounded-xl transition-all text-sm font-semibold shadow-sm"
+          >
+            <Clock size={16} />
+            <span>View Trip History</span>
+          </Link>
         </div>
       </div>
 
