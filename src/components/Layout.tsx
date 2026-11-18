@@ -11,7 +11,6 @@ import {
   Menu,
   X,
   Bus,
-  Clock,
   DollarSign
 } from 'lucide-react';
 
@@ -28,14 +27,16 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/trips', icon: Bus, label: 'Trip Management' },
-    { path: '/trip-history', icon: Clock, label: 'Trip History' },
     { path: '/fare-matrix', icon: DollarSign, label: 'Fare Matrix' },
     { path: '/transactions', icon: Receipt, label: 'Card Management' },
     { path: '/reports', icon: FileText, label: 'Reports' },
     { path: '/ai-monitoring', icon: Brain, label: 'AI Monitoring' },
   ];
 
-  const isItemActive = (path: string) => location.pathname === path;
+  const isItemActive = (path: string) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  };
 
   return (
     <>
@@ -46,7 +47,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
           onClick={() => setIsOpen(false)}
         />
       )}
-      <aside className={`glass-sidebar fixed left-0 top-0 h-full z-50 transition-all duration-300 flex flex-col ${isOpen ? 'w-64' : 'w-20'} lg:w-64 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <aside className={`glass-sidebar fixed left-0 top-0 h-full z-50 transition-all duration-300 flex flex-col w-64 ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-4 flex items-center justify-between border-b border-white/10">
           <div className="flex items-center gap-2">
             <img
@@ -54,11 +55,11 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
               alt="CommutAI Logo"
               className="w-10 h-10"
             />
-            <span className="text-white font-bold text-xl hidden lg:block">CommutAI</span>
+            <span className="text-white font-bold text-xl">CommutAI</span>
           </div>
           <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="text-white hover:text-orange-400 transition-colors"
+            onClick={() => setIsOpen(false)}
+            className="lg:hidden text-white hover:text-orange-400 transition-colors"
           >
             <X size={24} />
           </button>
@@ -80,7 +81,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
                 }`}
               >
                 <Icon size={20} />
-                <span className="font-medium hidden lg:block">{item.label}</span>
+                <span className="font-medium">{item.label}</span>
               </Link>
             );
           })}
@@ -92,7 +93,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (open: boo
             className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-red-400 hover:bg-red-500/20 hover:text-red-300`}
           >
             <LogOut size={20} />
-            <span className="font-medium hidden lg:block">Logout</span>
+            <span className="font-medium">Logout</span>
           </button>
         </div>
       </aside>
