@@ -15,7 +15,6 @@ interface QRCard {
   purchase_price: number;
   allowed_routes: string[];
   passenger_id: string | null;
-  destination: string | null;
   issued_by: string | null;
   issued_at: string;
   expires_at: string;
@@ -268,7 +267,6 @@ export default function Transactions() {
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Balance</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Status</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Type</th>
-                    <th className="text-left py-3 px-4 text-white/60 font-medium">Destination</th>
                     <th className="text-left py-3 px-4 text-white/60 font-medium">Issued At</th>
                   </tr>
                 </thead>
@@ -291,7 +289,6 @@ export default function Transactions() {
                           {card.card_type.replace('_', ' ')}
                         </span>
                       </td>
-                      <td className="py-4 px-4 text-white/80">{card.destination || 'N/A'}</td>
                       <td className="py-4 px-4 text-white/60 text-sm">
                         {new Date(card.issued_at).toLocaleDateString()}
                       </td>
