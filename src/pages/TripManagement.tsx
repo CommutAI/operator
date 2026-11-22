@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Search,
   Bus,
@@ -18,8 +19,15 @@ import {
   Users,
   TrendingUp,
   Filter,
-  ArrowLeft
+  ArrowLeft,
+  Plus,
+  Edit,
+  Trash2,
+  User,
+  Wrench,
+  ShieldAlert
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 
 interface Trip {
@@ -62,8 +70,31 @@ interface VideoRecording {
   metadata?: any;
 }
 
+export interface BusItem {
+  id: string;
+  bus_number: number | string | null;
+  plate_number: string;
+  route: string;
+  seat_capacity: number;
+  capacity?: number;
+  status: 'active' | 'maintenance' | 'inactive' | string;
+  bus_type?: string;
+  assigned_conductor_id?: string | null;
+  assigned_driver_id?: string | null;
+  conductor?: { id: string; full_name: string } | null;
+  driver?: { id: string; full_name: string } | null;
+  created_at?: string;
+}
+
+interface StaffUser {
+  id: string;
+  full_name: string;
+  role: string;
+}
+
 type PeriodType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom' | 'all';
 type PageSizeOption = '10' | '25' | '50' | '100' | 'all';
+type ActiveTab = 'active' | 'fleet' | 'history';
 
 const resolveVideoUrl = (fileNameOrUrl: string | null | undefined): string => {
   if (!fileNameOrUrl) return '';
@@ -75,7 +106,16 @@ const resolveVideoUrl = (fileNameOrUrl: string | null | undefined): string => {
   return `${backendUrl}/api/video-processing/download-video/${cleanName}`;
 };
 
-export default function TripManagement() {
+export default function TripManagement({ defaultTab }: { defaultTab?: ActiveTab }) {
+  const location = useLocation();
+
+  // Navigation tabs: active trips, bus fleet CRUD, trip history
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (defaultTab) return defaultTab;
+    if (location.pathname.includes('buses')) return 'fleet';
+    return 'active';
+  });
+
   const [trips, setTrips] = useState<Trip[]>([]);
   const [recordingsByTrip, setRecordingsByTrip] = useState<Record<string, VideoRecording[]>>({});
   const [loading, setLoading] = useState(true);
@@ -86,8 +126,7 @@ export default function TripManagement() {
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 10;
 
-  // History view toggle state (mirroring sys-admin)
-  const [showHistory, setShowHistory] = useState(false);
+  // History view state
   const [historyPeriod, setHistoryPeriod] = useState<PeriodType>('daily');
   const [customDateRange, setCustomDateRange] = useState({ startDate: '', endDate: '' });
   const [historySearchTerm, setHistorySearchTerm] = useState('');
@@ -95,7 +134,31 @@ export default function TripManagement() {
   const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
   const [historyPageSize, setHistoryPageSize] = useState<PageSizeOption>('10');
 
-  // Modal states
+  // Bus Fleet (CRUD) state
+  const [buses, setBuses] = useState<BusItem[]>([]);
+  const [busesLoading, setBusesLoading] = useState(false);
+  const [busSearchTerm, setBusSearchTerm] = useState('');
+  const [busStatusFilter, setBusStatusFilter] = useState('all');
+  const [busCurrentPage, setBusCurrentPage] = useState(1);
+  const [busPageSize, setBusPageSize] = useState<PageSizeOption>('10');
+  const [drivers, setDrivers] = useState<StaffUser[]>([]);
+  const [conductors, setConductors] = useState<StaffUser[]>([]);
+
+  // Bus Add/Edit Modal state
+  const [showAddBusModal, setShowAddBusModal] = useState(false);
+  const [editingBus, setEditingBus] = useState<BusItem | null>(null);
+  const [busSaving, setBusSaving] = useState(false);
+  const [busFormData, setBusFormData] = useState({
+    bus_number: '',
+    plate_number: '',
+    route: 'Manolo Fortich Terminal ↔ Agora Terminal',
+    seat_capacity: 35,
+    status: 'active',
+    driver_id: '',
+    conductor_id: ''
+  });
+
+  // Trip Details & Video Modal states
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [tripVideoUrl, setTripVideoUrl] = useState<string | null>(null);
   const [tripVideoStatus, setTripVideoStatus] = useState<'available' | 'processing' | 'not_available' | 'error' | null>(null);
@@ -110,12 +173,13 @@ export default function TripManagement() {
   } | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
+  // ── Fetch Trips with both Conductor AND Driver ───────────────────────────
   const fetchTrips = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('trips')
-        .select('*, buses!fk_trips_bus_id(*), conductor:staff_users!fk_trips_conductor_id(*)')
+        .select('*, buses!fk_trips_bus_id(*), conductor:staff_users!fk_trips_conductor_id(*), driver:staff_users!fk_trips_driver_id(*)')
         .order('started_at', { ascending: false });
 
       if (error) throw error;
@@ -147,19 +211,184 @@ export default function TripManagement() {
     }
   }, []);
 
+  // ── Fetch Buses for Fleet CRUD ───────────────────────────────────────────
+  const fetchBuses = useCallback(async () => {
+    try {
+      setBusesLoading(true);
+      const { data, error } = await supabase
+        .from('buses')
+        .select('*, conductor:staff_users!buses_assigned_conductor_id_fkey(id, full_name), driver:staff_users!buses_assigned_driver_id_fkey(id, full_name)')
+        .order('bus_number', { ascending: true });
+
+      if (error) throw error;
+      setBuses(data || []);
+    } catch (error) {
+      console.error('Error fetching buses:', error);
+    } finally {
+      setBusesLoading(false);
+    }
+  }, []);
+
+  // ── Fetch Staff for Driver & Conductor assignment ────────────────────────
+  const fetchStaff = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('staff_users')
+        .select('id, full_name, role');
+
+      if (error) throw error;
+      const allStaff = data || [];
+      setDrivers(allStaff.filter(s => s.role === 'driver'));
+      setConductors(allStaff.filter(s => s.role === 'conductor'));
+    } catch (error) {
+      console.error('Error fetching staff users:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTrips();
+    fetchBuses();
+    fetchStaff();
 
-    const subscription = supabase
-      .channel('trips-channel')
+    const tripsSub = supabase
+      .channel('trips-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, fetchTrips)
       .subscribe();
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [fetchTrips]);
+    const busesSub = supabase
+      .channel('buses-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'buses' }, fetchBuses)
+      .subscribe();
 
+    return () => {
+      tripsSub.unsubscribe();
+      busesSub.unsubscribe();
+    };
+  }, [fetchTrips, fetchBuses, fetchStaff]);
+
+  // ── Bus CRUD Operations ──────────────────────────────────────────────────
+  const handleOpenAddBus = () => {
+    setEditingBus(null);
+    setBusFormData({
+      bus_number: '',
+      plate_number: '',
+      route: 'Manolo Fortich Terminal ↔ Agora Terminal',
+      seat_capacity: 35,
+      status: 'active',
+      driver_id: '',
+      conductor_id: ''
+    });
+    setShowAddBusModal(true);
+  };
+
+  const handleOpenEditBus = (bus: BusItem) => {
+    setEditingBus(bus);
+    setBusFormData({
+      bus_number: bus.bus_number ? String(bus.bus_number) : '',
+      plate_number: bus.plate_number || '',
+      route: bus.route || 'Manolo Fortich Terminal ↔ Agora Terminal',
+      seat_capacity: bus.seat_capacity || 35,
+      status: bus.status || 'active',
+      driver_id: bus.assigned_driver_id || bus.driver?.id || '',
+      conductor_id: bus.assigned_conductor_id || bus.conductor?.id || ''
+    });
+    setShowAddBusModal(true);
+  };
+
+  const handleSaveBus = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!busFormData.plate_number.trim()) {
+      toast.error('Plate number is required');
+      return;
+    }
+
+    try {
+      setBusSaving(true);
+      const payload: any = {
+        plate_number: busFormData.plate_number.trim().toUpperCase(),
+        bus_number: busFormData.bus_number ? parseInt(busFormData.bus_number, 10) : null,
+        route: busFormData.route.trim(),
+        seat_capacity: Number(busFormData.seat_capacity) || 35,
+        status: busFormData.status,
+        assigned_driver_id: busFormData.driver_id || null,
+        assigned_conductor_id: busFormData.conductor_id || null
+      };
+
+      if (editingBus) {
+        const { error } = await supabase
+          .from('buses')
+          .update(payload)
+          .eq('id', editingBus.id);
+
+        if (error) throw error;
+        toast.success(`Bus ${payload.plate_number} updated successfully`);
+      } else {
+        const { error } = await supabase
+          .from('buses')
+          .insert([payload]);
+
+        if (error) throw error;
+        toast.success(`Bus ${payload.plate_number} added successfully`);
+      }
+
+      setShowAddBusModal(false);
+      setEditingBus(null);
+      await fetchBuses();
+      await fetchTrips();
+    } catch (err: any) {
+      console.error('Error saving bus:', err);
+      toast.error(err.message || 'Failed to save bus');
+    } finally {
+      setBusSaving(false);
+    }
+  };
+
+  const handleDeleteBus = async (bus: BusItem) => {
+    const confirmMessage = `Are you sure you want to delete Bus #${bus.bus_number || ''} (${bus.plate_number})? This action cannot be undone.`;
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      const { error } = await supabase
+        .from('buses')
+        .delete()
+        .eq('id', bus.id);
+
+      if (error) {
+        if (error.code === '23503' || error.message.toLowerCase().includes('foreign key')) {
+          toast.error(`Cannot delete bus ${bus.plate_number} because it has historical trip records. You can set its status to "Inactive" instead.`);
+        } else {
+          toast.error(error.message || 'Failed to delete bus');
+        }
+        return;
+      }
+
+      toast.success(`Bus ${bus.plate_number} deleted successfully`);
+      await fetchBuses();
+      await fetchTrips();
+    } catch (err: any) {
+      console.error('Error deleting bus:', err);
+      toast.error(err.message || 'Failed to delete bus');
+    }
+  };
+
+  const handleUpdateBusStatus = async (busId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('buses')
+        .update({ status: newStatus })
+        .eq('id', busId);
+
+      if (error) throw error;
+      toast.success(`Bus status changed to ${newStatus}`);
+      await fetchBuses();
+      await fetchTrips();
+    } catch (err: any) {
+      console.error('Error updating status:', err);
+      toast.error('Failed to update bus status');
+    }
+  };
+
+  // ── Trip Details Modal Loader ───────────────────────────────────────────
   const fetchTripDetails = async (tripId: string) => {
     try {
       setDetailsLoading(true);
@@ -170,7 +399,6 @@ export default function TripManagement() {
       setTripVideoRecordings([]);
       setModalVideoPage(1);
 
-      // Fetch transactions, irregularities, emergency alerts, and video recordings
       const [txRes, irrRes, alertsRes, recordingsRes] = await Promise.all([
         supabase
           .from('transactions')
@@ -208,7 +436,6 @@ export default function TripManagement() {
       const recs: VideoRecording[] = recordingsRes.data || [];
       setTripVideoRecordings(recs);
 
-      // Resolve Video Stream URL with priority
       const completedRec = recs.find(r => r.status === 'completed' && r.file_name);
       if (foundTrip?.video_recording_url && (foundTrip.video_recording_status === 'available' || !foundTrip.video_recording_status)) {
         setTripVideoUrl(resolveVideoUrl(foundTrip.video_recording_url));
@@ -233,7 +460,7 @@ export default function TripManagement() {
     }
   };
 
-  // Active trips filtering
+  // ── Active Trips filtering (Includes Driver) ─────────────────────────────
   const filteredActiveTrips = useMemo(() => {
     return trips.filter(trip => {
       const q = searchTerm.toLowerCase();
@@ -241,7 +468,8 @@ export default function TripManagement() {
         trip.buses?.plate_number?.toLowerCase().includes(q) ||
         String(trip.buses?.bus_number || '').toLowerCase().includes(q) ||
         trip.buses?.route?.toLowerCase().includes(q) ||
-        trip.conductor?.full_name?.toLowerCase().includes(q);
+        trip.conductor?.full_name?.toLowerCase().includes(q) ||
+        trip.driver?.full_name?.toLowerCase().includes(q);
 
       const matchesStatus = filterStatus === 'all' || trip.status === filterStatus;
       return matchesSearch && matchesStatus;
@@ -256,7 +484,37 @@ export default function TripManagement() {
     );
   }, [filteredActiveTrips, currentPage, itemsPerPage]);
 
-  // Trip History: period filtering
+  // ── Bus Fleet filtering (CRUD View) ──────────────────────────────────────
+  const filteredBuses = useMemo(() => {
+    return buses.filter(bus => {
+      const q = busSearchTerm.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        bus.plate_number?.toLowerCase().includes(q) ||
+        String(bus.bus_number || '').toLowerCase().includes(q) ||
+        bus.route?.toLowerCase().includes(q) ||
+        bus.driver?.full_name?.toLowerCase().includes(q) ||
+        bus.conductor?.full_name?.toLowerCase().includes(q);
+
+      const matchesStatus = busStatusFilter === 'all' || bus.status === busStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [buses, busSearchTerm, busStatusFilter]);
+
+  const busTotalPages = useMemo(() => {
+    if (busPageSize === 'all') return 1;
+    const size = parseInt(busPageSize, 10);
+    return Math.max(1, Math.ceil(filteredBuses.length / size));
+  }, [filteredBuses.length, busPageSize]);
+
+  const paginatedBuses = useMemo(() => {
+    if (busPageSize === 'all') return filteredBuses;
+    const size = parseInt(busPageSize, 10);
+    const start = (busCurrentPage - 1) * size;
+    return filteredBuses.slice(start, start + size);
+  }, [filteredBuses, busCurrentPage, busPageSize]);
+
+  // ── History View filtering ───────────────────────────────────────────────
   const periodFilteredHistoryTrips = useMemo(() => {
     if (historyPeriod === 'all') return trips;
 
@@ -315,7 +573,6 @@ export default function TripManagement() {
     });
   }, [trips, historyPeriod, customDateRange]);
 
-  // Trip History: summary metrics
   const historyStats = useMemo(() => {
     const totalTrips = periodFilteredHistoryTrips.length;
     const totalPassengers = periodFilteredHistoryTrips.reduce(
@@ -326,7 +583,6 @@ export default function TripManagement() {
     return { totalTrips, totalPassengers, avgPassengers };
   }, [periodFilteredHistoryTrips]);
 
-  // Trip History: search and status filter
   const finalFilteredHistoryTrips = useMemo(() => {
     return periodFilteredHistoryTrips.filter(trip => {
       const q = historySearchTerm.toLowerCase().trim();
@@ -343,7 +599,6 @@ export default function TripManagement() {
     });
   }, [periodFilteredHistoryTrips, historySearchTerm, historyStatusFilter]);
 
-  // Trip History: dynamic pagination
   const historyTotalPages = useMemo(() => {
     if (historyPageSize === 'all') return 1;
     const size = parseInt(historyPageSize, 10);
@@ -357,59 +612,6 @@ export default function TripManagement() {
     return finalFilteredHistoryTrips.slice(start, start + size);
   }, [finalFilteredHistoryTrips, historyCurrentPage, historyPageSize]);
 
-  const handleHistoryPageSizeChange = (val: PageSizeOption) => {
-    setHistoryPageSize(val);
-    setHistoryCurrentPage(1);
-  };
-
-  // Export CSV for history
-  const handleExportHistoryCSV = () => {
-    const headers = [
-      'Trip ID',
-      'Bus Number',
-      'Plate Number',
-      'Route',
-      'Conductor',
-      'Passengers',
-      'Status',
-      'Started At',
-      'Ended At',
-      'Duration (min)',
-      'Video Recording'
-    ];
-
-    const rows = finalFilteredHistoryTrips.map(trip => {
-      const dur = trip.ended_at
-        ? Math.round((new Date(trip.ended_at).getTime() - new Date(trip.started_at).getTime()) / 60000)
-        : '';
-      const hasVid = trip.video_recording_url || (recordingsByTrip[trip.id]?.length > 0) ? 'Available' : 'None';
-      return [
-        `"${trip.id}"`,
-        `"${trip.buses?.bus_number || ''}"`,
-        `"${trip.buses?.plate_number || ''}"`,
-        `"${trip.buses?.route || ''}"`,
-        `"${trip.conductor?.full_name || ''}"`,
-        trip.total_passengers || 0,
-        `"${trip.status}"`,
-        `"${new Date(trip.started_at).toLocaleString()}"`,
-        trip.ended_at ? `"${new Date(trip.ended_at).toLocaleString()}"` : '""',
-        dur,
-        `"${hasVid}"`
-      ].join(',');
-    });
-
-    const csvContent = [headers.join(','), ...rows].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `trip_history_${historyPeriod}_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const statusLabels: Record<string, string> = {
     in_progress: 'In Progress',
     completed: 'Completed',
@@ -422,53 +624,501 @@ export default function TripManagement() {
     cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
   };
 
-  const historyRangeStart = historyPageSize === 'all' ? 1 : (historyCurrentPage - 1) * parseInt(historyPageSize, 10) + 1;
-  const historyRangeEnd = historyPageSize === 'all'
-    ? finalFilteredHistoryTrips.length
-    : Math.min(historyCurrentPage * parseInt(historyPageSize, 10), finalFilteredHistoryTrips.length);
+  const busStatusColors: Record<string, string> = {
+    active: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    maintenance: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    inactive: 'bg-red-500/20 text-red-400 border-red-500/30'
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header and Toggle Button */}
+      {/* ── Top Header and View Tabs ───────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Bus className="text-orange-400" size={26} />
-            {showHistory ? 'Trip History Log' : 'Trip Management'}
+            {activeTab === 'active' && 'Trip Management'}
+            {activeTab === 'fleet' && 'Bus Fleet Management'}
+            {activeTab === 'history' && 'Trip History Log'}
           </h1>
           <p className="text-white/60 text-sm mt-0.5">
-            {showHistory
-              ? 'Historical run records, passenger load metrics, and on-board video feeds'
-              : 'Real-time monitoring of fleet operations, active trips, and driver telemetry'}
+            {activeTab === 'active' && 'Monitor active fleet operations, conductor/driver assignments, and telemetry'}
+            {activeTab === 'fleet' && 'Add, edit, assign drivers & conductors, and configure your transit buses'}
+            {activeTab === 'history' && 'Historical run records, passenger load metrics, and on-board video feeds'}
           </p>
         </div>
 
-        {/* View Toggle Button */}
-        <div className="flex items-center gap-3">
+        {/* View Selection Tabs & Add Bus Shortcut */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="bg-white/5 p-1 rounded-xl border border-white/10 flex items-center gap-1">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'active'
+                  ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30'
+                  : 'text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Activity size={15} />
+              <span>Active Trips</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
+                {trips.filter(t => t.status === 'in_progress').length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('fleet')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'fleet'
+                  ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30'
+                  : 'text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Bus size={15} />
+              <span>Bus Fleet</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
+                {buses.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'history'
+                  ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30'
+                  : 'text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Clock size={15} />
+              <span>Trip History</span>
+            </button>
+          </div>
+
+          {/* Quick Add Bus Button */}
           <button
-            onClick={() => {
-              setShowHistory(!showHistory);
-              setHistoryCurrentPage(1);
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
+            onClick={handleOpenAddBus}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
           >
-            {showHistory ? (
-              <>
-                <ArrowLeft size={16} />
-                <span>Back to Active Trips</span>
-              </>
-            ) : (
-              <>
-                <Clock size={16} />
-                <span>Trip History</span>
-              </>
-            )}
+            <Plus size={16} />
+            <span>Add Bus</span>
           </button>
         </div>
       </div>
 
-      {showHistory ? (
-        /* ────────────────── VIEW 1: TRIP HISTORY VIEW ────────────────── */
+      {/* ── TAB 1: ACTIVE TRIPS VIEW (Includes Driver column) ───────────────── */}
+      {activeTab === 'active' && (
+        <div className="space-y-6">
+          {/* Active Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="glass-card p-4 border border-blue-500/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/60 text-sm">Active Trips</p>
+                  <p className="text-2xl font-bold text-white mt-1">
+                    {trips.filter(t => t.status === 'in_progress').length}
+                  </p>
+                </div>
+                <div className="p-3 bg-blue-500/20 rounded-xl text-blue-400">
+                  <Activity size={24} />
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card p-4 border border-green-500/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/60 text-sm">Active Buses in Transit</p>
+                  <p className="text-2xl font-bold text-white mt-1">
+                    {new Set(trips.filter(t => t.status === 'in_progress').map(t => t.buses?.plate_number)).size}
+                  </p>
+                </div>
+                <div className="p-3 bg-green-500/20 rounded-xl text-green-400">
+                  <Bus size={24} />
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card p-4 border border-purple-500/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/60 text-sm">Total Real-time Passengers</p>
+                  <p className="text-2xl font-bold text-white mt-1">
+                    {trips.filter(t => t.status === 'in_progress').reduce((sum, t) => sum + (Number(t.total_passengers) || 0), 0)}
+                  </p>
+                </div>
+                <div className="p-3 bg-purple-500/20 rounded-xl text-purple-400">
+                  <Users size={24} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Trips Filters & Table */}
+          <div className="glass-card p-6 border border-white/10 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
+                <input
+                  type="text"
+                  placeholder="Search by bus, route, driver, conductor..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-orange-500 text-sm"
+                />
+              </div>
+
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-orange-500 w-full sm:w-auto"
+              >
+                <option value="all" className="bg-gray-800">All Status</option>
+                <option value="in_progress" className="bg-gray-800">In Progress</option>
+                <option value="completed" className="bg-gray-800">Completed</option>
+                <option value="cancelled" className="bg-gray-800">Cancelled</option>
+              </select>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <div className="text-white/60 text-sm">Loading trips...</div>
+              </div>
+            ) : filteredActiveTrips.length === 0 ? (
+              <div className="text-center py-8">
+                <Bus className="text-white/20 mx-auto mb-2" size={48} />
+                <p className="text-white/40">No trips found</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-white/10 text-left">
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Bus</th>
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Route</th>
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Driver</th>
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Conductor</th>
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Passengers</th>
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Started At</th>
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Status</th>
+                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedActiveTrips.map((trip) => (
+                        <tr key={trip.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                          <td className="py-4 px-4">
+                            <div className="flex items-center gap-2">
+                              <Bus className="text-orange-400" size={16} />
+                              <span className="text-white font-medium">
+                                {trip.buses?.bus_number || trip.buses?.plate_number || 'N/A'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-4 text-white/80">{trip.buses?.route || 'Unknown'}</td>
+                          <td className="py-4 px-4 text-white/90 font-medium">{trip.driver?.full_name || 'Unassigned'}</td>
+                          <td className="py-4 px-4 text-white/80">{trip.conductor?.full_name || 'Unassigned'}</td>
+                          <td className="py-4 px-4 text-white/80 font-bold">{trip.total_passengers || 0}</td>
+                          <td className="py-4 px-4 text-white/60 text-sm">
+                            {new Date(trip.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${statusColors[trip.status] || 'bg-white/10 text-white'}`}>
+                              {statusLabels[trip.status] || trip.status}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <button
+                              onClick={() => fetchTripDetails(trip.id)}
+                              className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm transition-colors cursor-pointer"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                    <span className="text-white/60 text-sm">
+                      Showing {currentPage * itemsPerPage + 1} to {Math.min((currentPage + 1) * itemsPerPage, filteredActiveTrips.length)} of {filteredActiveTrips.length} trips
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+                        disabled={currentPage === 0}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm flex items-center gap-1"
+                      >
+                        <ChevronLeft size={16} />
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))}
+                        disabled={currentPage >= totalPages - 1}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm flex items-center gap-1"
+                      >
+                        Next
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 2: BUS FLEET MANAGEMENT (CRUD VIEW) ────────────────────────── */}
+      {activeTab === 'fleet' && (
+        <div className="space-y-6">
+          {/* Fleet Statistics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="glass-card p-4 border border-white/10 flex items-center justify-between">
+              <div>
+                <p className="text-white/60 text-xs uppercase tracking-wider font-semibold">Total Fleet</p>
+                <p className="text-2xl font-bold text-white mt-1">{buses.length}</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-orange-500/15 text-orange-400">
+                <Bus size={22} />
+              </div>
+            </div>
+
+            <div className="glass-card p-4 border border-emerald-500/30 flex items-center justify-between">
+              <div>
+                <p className="text-white/60 text-xs uppercase tracking-wider font-semibold">Active Buses</p>
+                <p className="text-2xl font-bold text-emerald-400 mt-1">
+                  {buses.filter(b => b.status === 'active').length}
+                </p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400">
+                <CheckCircle size={22} />
+              </div>
+            </div>
+
+            <div className="glass-card p-4 border border-amber-500/30 flex items-center justify-between">
+              <div>
+                <p className="text-white/60 text-xs uppercase tracking-wider font-semibold">Under Maintenance</p>
+                <p className="text-2xl font-bold text-amber-400 mt-1">
+                  {buses.filter(b => b.status === 'maintenance').length}
+                </p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-400">
+                <Wrench size={22} />
+              </div>
+            </div>
+
+            <div className="glass-card p-4 border border-red-500/30 flex items-center justify-between">
+              <div>
+                <p className="text-white/60 text-xs uppercase tracking-wider font-semibold">Inactive Buses</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">
+                  {buses.filter(b => b.status === 'inactive').length}
+                </p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-red-500/15 text-red-400">
+                <ShieldAlert size={22} />
+              </div>
+            </div>
+          </div>
+
+          {/* Bus Fleet Table Card */}
+          <div className="glass-card p-6 border border-white/10 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
+                <input
+                  type="text"
+                  placeholder="Search by bus #, plate, route, driver..."
+                  value={busSearchTerm}
+                  onChange={(e) => {
+                    setBusSearchTerm(e.target.value);
+                    setBusCurrentPage(1);
+                  }}
+                  className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-orange-500 text-sm"
+                />
+              </div>
+
+              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                <Filter size={16} className="text-white/50 hidden sm:block" />
+                <select
+                  value={busStatusFilter}
+                  onChange={(e) => {
+                    setBusStatusFilter(e.target.value);
+                    setBusCurrentPage(1);
+                  }}
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500 w-full sm:w-auto"
+                >
+                  <option value="all" className="bg-gray-800">All Status</option>
+                  <option value="active" className="bg-gray-800">Active</option>
+                  <option value="maintenance" className="bg-gray-800">Maintenance</option>
+                  <option value="inactive" className="bg-gray-800">Inactive</option>
+                </select>
+
+                <button
+                  onClick={handleOpenAddBus}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-semibold transition-colors shrink-0 shadow-md shadow-orange-500/20"
+                >
+                  <Plus size={16} />
+                  <span>Add Bus</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table */}
+            {busesLoading ? (
+              <div className="text-center py-12">
+                <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-white/60 text-sm">Loading bus fleet...</p>
+              </div>
+            ) : filteredBuses.length === 0 ? (
+              <div className="text-center py-12 border border-white/10 rounded-xl bg-white/[0.02]">
+                <Bus size={40} className="text-white/20 mx-auto mb-2" />
+                <p className="text-white font-medium">No buses match your criteria</p>
+                <p className="text-white/40 text-xs mt-1">Try adjusting your search or add a new bus</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-white/5 border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/60">
+                        <th className="py-3 px-4 font-semibold">Bus #</th>
+                        <th className="py-3 px-4 font-semibold">Plate Number</th>
+                        <th className="py-3 px-4 font-semibold">Route</th>
+                        <th className="py-3 px-4 font-semibold">Capacity</th>
+                        <th className="py-3 px-4 font-semibold">Driver</th>
+                        <th className="py-3 px-4 font-semibold">Conductor</th>
+                        <th className="py-3 px-4 font-semibold">Status</th>
+                        <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-sm">
+                      {paginatedBuses.map((bus) => (
+                        <tr key={bus.id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-white font-bold text-base">
+                                #{bus.bus_number || '—'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-mono text-orange-400 font-semibold bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20 text-xs">
+                              {bus.plate_number}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-white/80 max-w-[220px] truncate" title={bus.route}>
+                            {bus.route}
+                          </td>
+                          <td className="py-3.5 px-4 text-white/80">
+                            {bus.seat_capacity || 35} seats
+                          </td>
+                          <td className="py-3.5 px-4 text-white/90 font-medium">
+                            {bus.driver?.full_name || 'Unassigned'}
+                          </td>
+                          <td className="py-3.5 px-4 text-white/80">
+                            {bus.conductor?.full_name || 'Unassigned'}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <select
+                              value={bus.status}
+                              onChange={(e) => handleUpdateBusStatus(bus.id, e.target.value)}
+                              className={`px-2 py-1 rounded-lg text-xs font-medium border bg-gray-900 cursor-pointer ${busStatusColors[bus.status] || 'border-white/20 text-white'}`}
+                            >
+                              <option value="active">Active</option>
+                              <option value="maintenance">Maintenance</option>
+                              <option value="inactive">Inactive</option>
+                            </select>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleOpenEditBus(bus)}
+                                className="p-1.5 bg-white/5 hover:bg-white/15 text-white/80 hover:text-white rounded-lg border border-white/10 transition-colors"
+                                title="Edit bus details"
+                              >
+                                <Edit size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteBus(bus)}
+                                className="p-1.5 bg-red-500/10 hover:bg-red-500/25 text-red-400 rounded-lg border border-red-500/20 transition-colors"
+                                title="Delete bus"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Fleet Pagination Toolbar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-3 gap-3 border-t border-white/10">
+                  <div className="flex items-center gap-3 text-white/60 text-xs sm:text-sm">
+                    <span>
+                      Showing {filteredBuses.length === 0 ? 0 : (busPageSize === 'all' ? 1 : (busCurrentPage - 1) * parseInt(busPageSize, 10) + 1)} to{' '}
+                      {busPageSize === 'all' ? filteredBuses.length : Math.min(busCurrentPage * parseInt(busPageSize, 10), filteredBuses.length)} of {filteredBuses.length} buses
+                    </span>
+
+                    <div className="flex items-center gap-1.5 ml-2">
+                      <span className="text-xs text-white/40">Per page:</span>
+                      <select
+                        value={busPageSize}
+                        onChange={(e) => {
+                          setBusPageSize(e.target.value as PageSizeOption);
+                          setBusCurrentPage(1);
+                        }}
+                        className="px-2 py-1 bg-white/5 border border-white/15 rounded-lg text-white text-xs focus:outline-none focus:border-orange-500 cursor-pointer"
+                      >
+                        <option value="10" className="bg-gray-800">10</option>
+                        <option value="25" className="bg-gray-800">25</option>
+                        <option value="50" className="bg-gray-800">50</option>
+                        <option value="100" className="bg-gray-800">100</option>
+                        <option value="all" className="bg-gray-800">All</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {busPageSize !== 'all' && busTotalPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setBusCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={busCurrentPage === 1}
+                        className="p-1.5 sm:px-2.5 sm:py-1 bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg border border-white/10 transition-colors text-xs flex items-center gap-1"
+                      >
+                        <ChevronLeft size={14} />
+                        <span className="hidden sm:inline">Prev</span>
+                      </button>
+
+                      <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/70 text-xs font-mono">
+                        Page {busCurrentPage} of {busTotalPages}
+                      </span>
+
+                      <button
+                        onClick={() => setBusCurrentPage(p => Math.min(busTotalPages, p + 1))}
+                        disabled={busCurrentPage === busTotalPages}
+                        className="p-1.5 sm:px-2.5 sm:py-1 bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg border border-white/10 transition-colors text-xs flex items-center gap-1"
+                      >
+                        <span className="hidden sm:inline">Next</span>
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 3: TRIP HISTORY VIEW ───────────────────────────────────────── */}
+      {activeTab === 'history' && (
         <div className="space-y-6">
           <div className="glass-card p-5 sm:p-6 border border-white/10 rounded-2xl space-y-6">
             {/* Period Tabs & CSV Export */}
@@ -492,14 +1142,9 @@ export default function TripManagement() {
                 ))}
               </div>
 
-              <button
-                onClick={handleExportHistoryCSV}
-                disabled={finalFilteredHistoryTrips.length === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-medium transition-colors disabled:opacity-50"
-              >
-                <Download size={14} />
-                <span>Export CSV</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/50">Historical Trip Logs</span>
+              </div>
             </div>
 
             {/* Custom Range Picker */}
@@ -617,6 +1262,7 @@ export default function TripManagement() {
                       <tr className="bg-white/5 border-b border-white/10 text-xs uppercase tracking-wider text-white/60">
                         <th className="text-left py-3.5 px-4 font-semibold">Bus</th>
                         <th className="text-left py-3.5 px-4 font-semibold">Route</th>
+                        <th className="text-left py-3.5 px-4 font-semibold">Driver</th>
                         <th className="text-left py-3.5 px-4 font-semibold">Conductor</th>
                         <th className="text-left py-3.5 px-4 font-semibold">Passengers</th>
                         <th className="text-left py-3.5 px-4 font-semibold">Started</th>
@@ -655,6 +1301,9 @@ export default function TripManagement() {
                             </td>
                             <td className="py-3.5 px-4 text-white/80 text-sm max-w-[200px] truncate">
                               {trip.buses?.route || 'Unknown'}
+                            </td>
+                            <td className="py-3.5 px-4 text-white/90 text-sm font-medium">
+                              {trip.driver?.full_name || '—'}
                             </td>
                             <td className="py-3.5 px-4 text-white/80 text-sm">
                               {trip.conductor?.full_name || '—'}
@@ -710,14 +1359,18 @@ export default function TripManagement() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-3 gap-3 border-t border-white/10">
                   <div className="flex items-center gap-3 text-white/60 text-xs sm:text-sm">
                     <span>
-                      Showing {finalFilteredHistoryTrips.length === 0 ? 0 : historyRangeStart} to {historyRangeEnd} of {finalFilteredHistoryTrips.length} trips
+                      Showing {finalFilteredHistoryTrips.length === 0 ? 0 : (historyPageSize === 'all' ? 1 : (historyCurrentPage - 1) * parseInt(historyPageSize, 10) + 1)} to{' '}
+                      {historyPageSize === 'all' ? finalFilteredHistoryTrips.length : Math.min(historyCurrentPage * parseInt(historyPageSize, 10), finalFilteredHistoryTrips.length)} of {finalFilteredHistoryTrips.length} trips
                     </span>
 
                     <div className="flex items-center gap-1.5 ml-2">
                       <span className="text-xs text-white/40">Per page:</span>
                       <select
                         value={historyPageSize}
-                        onChange={e => handleHistoryPageSizeChange(e.target.value as PageSizeOption)}
+                        onChange={e => {
+                          setHistoryPageSize(e.target.value as PageSizeOption);
+                          setHistoryCurrentPage(1);
+                        }}
                         className="px-2 py-1 bg-white/5 border border-white/15 rounded-lg text-white text-xs focus:outline-none focus:border-orange-500 cursor-pointer"
                       >
                         <option value="10" className="bg-gray-800">10</option>
@@ -735,7 +1388,6 @@ export default function TripManagement() {
                         onClick={() => setHistoryCurrentPage(1)}
                         disabled={historyCurrentPage === 1}
                         className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg border border-white/10 transition-colors text-xs"
-                        title="First page"
                       >
                         First
                       </button>
@@ -744,7 +1396,6 @@ export default function TripManagement() {
                         onClick={() => setHistoryCurrentPage(prev => Math.max(1, prev - 1))}
                         disabled={historyCurrentPage === 1}
                         className="p-1.5 sm:px-2.5 sm:py-1.5 bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg border border-white/10 transition-colors text-xs flex items-center gap-1"
-                        title="Previous page"
                       >
                         <ChevronLeft size={14} />
                         <span className="hidden sm:inline">Prev</span>
@@ -783,7 +1434,6 @@ export default function TripManagement() {
                         onClick={() => setHistoryCurrentPage(prev => Math.min(historyTotalPages, prev + 1))}
                         disabled={historyCurrentPage === historyTotalPages}
                         className="p-1.5 sm:px-2.5 sm:py-1.5 bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg border border-white/10 transition-colors text-xs flex items-center gap-1"
-                        title="Next page"
                       >
                         <span className="hidden sm:inline">Next</span>
                         <ChevronRight size={14} />
@@ -793,7 +1443,6 @@ export default function TripManagement() {
                         onClick={() => setHistoryCurrentPage(historyTotalPages)}
                         disabled={historyCurrentPage === historyTotalPages}
                         className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg border border-white/10 transition-colors text-xs"
-                        title="Last page"
                       >
                         Last
                       </button>
@@ -810,172 +1459,187 @@ export default function TripManagement() {
             )}
           </div>
         </div>
-      ) : (
-        /* ────────────────── VIEW 2: ACTIVE TRIPS VIEW ────────────────── */
-        <div className="space-y-6">
-          {/* Active Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="glass-card p-4 border border-blue-500/30">
-              <div className="flex items-center justify-between">
+      )}
+
+      {/* ── MODAL 1: ADD / EDIT BUS MODAL (CRUD) ────────────────────────────── */}
+      {showAddBusModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="glass-card rounded-2xl w-full max-w-2xl overflow-hidden border border-white/15 flex flex-col my-auto shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-white/10 bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500/20 text-orange-400 rounded-xl border border-orange-500/30">
+                  <Bus size={20} />
+                </div>
                 <div>
-                  <p className="text-white/60 text-sm">Active Trips</p>
-                  <p className="text-2xl font-bold text-white mt-1">
-                    {trips.filter(t => t.status === 'in_progress').length}
+                  <h2 className="text-lg font-bold text-white">
+                    {editingBus ? `Edit Bus #${editingBus.bus_number || ''} (${editingBus.plate_number})` : 'Add New Fleet Bus'}
+                  </h2>
+                  <p className="text-white/50 text-xs">
+                    Configure plate number, route, seat capacity, driver & conductor assignment
                   </p>
                 </div>
-                <div className="p-3 bg-blue-500/20 rounded-xl text-blue-400">
-                  <Activity size={24} />
-                </div>
               </div>
-            </div>
-
-            <div className="glass-card p-4 border border-green-500/30">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white/60 text-sm">Active Buses</p>
-                  <p className="text-2xl font-bold text-white mt-1">
-                    {new Set(trips.filter(t => t.status === 'in_progress').map(t => t.buses?.plate_number)).size}
-                  </p>
-                </div>
-                <div className="p-3 bg-green-500/20 rounded-xl text-green-400">
-                  <Bus size={24} />
-                </div>
-              </div>
-            </div>
-
-            <div className="glass-card p-4 border border-purple-500/30">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white/60 text-sm">Total Real-time Passengers</p>
-                  <p className="text-2xl font-bold text-white mt-1">
-                    {trips.filter(t => t.status === 'in_progress').reduce((sum, t) => sum + (Number(t.total_passengers) || 0), 0)}
-                  </p>
-                </div>
-                <div className="p-3 bg-purple-500/20 rounded-xl text-purple-400">
-                  <Users size={24} />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Active Trips Filters & Table */}
-          <div className="glass-card p-6 border border-white/10 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search active trips..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-orange-500 text-sm"
-                />
-              </div>
-
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-orange-500 w-full sm:w-auto"
+              <button
+                onClick={() => {
+                  setShowAddBusModal(false);
+                  setEditingBus(null);
+                }}
+                className="text-white/60 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
               >
-                <option value="all" className="bg-gray-800">All Status</option>
-                <option value="in_progress" className="bg-gray-800">In Progress</option>
-                <option value="completed" className="bg-gray-800">Completed</option>
-                <option value="cancelled" className="bg-gray-800">Cancelled</option>
-              </select>
+                <X size={20} />
+              </button>
             </div>
 
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-white">Loading trips...</div>
-              </div>
-            ) : filteredActiveTrips.length === 0 ? (
-              <div className="text-center py-8">
-                <Bus className="text-white/20 mx-auto mb-2" size={48} />
-                <p className="text-white/40">No trips found</p>
-              </div>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-white/10 text-left">
-                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Bus</th>
-                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Route</th>
-                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Conductor</th>
-                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Passengers</th>
-                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Started At</th>
-                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Status</th>
-                        <th className="py-3 px-4 text-white/60 font-medium text-sm">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedActiveTrips.map((trip) => (
-                        <tr key={trip.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                          <td className="py-4 px-4">
-                            <div className="flex items-center gap-2">
-                              <Bus className="text-orange-400" size={16} />
-                              <span className="text-white font-medium">
-                                {trip.buses?.bus_number || trip.buses?.plate_number || 'N/A'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-4 px-4 text-white/80">{trip.buses?.route || 'Unknown'}</td>
-                          <td className="py-4 px-4 text-white/80">{trip.conductor?.full_name || 'Unassigned'}</td>
-                          <td className="py-4 px-4 text-white/80">{trip.total_passengers || 0}</td>
-                          <td className="py-4 px-4 text-white/60 text-sm">
-                            {new Date(trip.started_at).toLocaleTimeString()}
-                          </td>
-                          <td className="py-4 px-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${statusColors[trip.status] || 'bg-white/10 text-white'}`}>
-                              {statusLabels[trip.status] || trip.status}
-                            </span>
-                          </td>
-                          <td className="py-4 px-4">
-                            <button
-                              onClick={() => fetchTripDetails(trip.id)}
-                              className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm transition-colors cursor-pointer"
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {/* Form */}
+            <form onSubmit={handleSaveBus} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left: Bus Specs */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-white/70 text-xs font-semibold uppercase tracking-wider block mb-1">
+                      Bus Number <span className="text-white/40 font-normal lowercase">(optional)</span>
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 1001"
+                      value={busFormData.bus_number}
+                      onChange={(e) => setBusFormData({ ...busFormData, bus_number: e.target.value })}
+                      className="w-full bg-white/5 border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-white/70 text-xs font-semibold uppercase tracking-wider block mb-1">
+                      Plate Number <span className="text-orange-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. BUS-001"
+                      value={busFormData.plate_number}
+                      onChange={(e) => setBusFormData({ ...busFormData, plate_number: e.target.value })}
+                      className="w-full bg-white/5 border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 uppercase font-mono transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-white/70 text-xs font-semibold uppercase tracking-wider block mb-1">
+                      Route Corridor <span className="text-orange-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Manolo Fortich Terminal ↔ Agora Terminal"
+                      value={busFormData.route}
+                      onChange={(e) => setBusFormData({ ...busFormData, route: e.target.value })}
+                      className="w-full bg-white/5 border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 transition-colors"
+                    />
+                  </div>
                 </div>
 
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between pt-4 border-t border-white/10">
-                    <span className="text-white/60 text-sm">
-                      Showing {currentPage * itemsPerPage + 1} to {Math.min((currentPage + 1) * itemsPerPage, filteredActiveTrips.length)} of {filteredActiveTrips.length} trips
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
-                        disabled={currentPage === 0}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm flex items-center gap-1"
+                {/* Right: Capacity, Status & Staff Assignment */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-white/70 text-xs font-semibold uppercase tracking-wider block mb-1">
+                        Seat Capacity
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        required
+                        value={busFormData.seat_capacity}
+                        onChange={(e) => setBusFormData({ ...busFormData, seat_capacity: parseInt(e.target.value, 10) || 35 })}
+                        className="w-full bg-white/5 border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-white/70 text-xs font-semibold uppercase tracking-wider block mb-1">
+                        Status
+                      </label>
+                      <select
+                        value={busFormData.status}
+                        onChange={(e) => setBusFormData({ ...busFormData, status: e.target.value })}
+                        className="w-full bg-gray-800 border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 cursor-pointer"
                       >
-                        <ChevronLeft size={16} />
-                        Previous
-                      </button>
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))}
-                        disabled={currentPage >= totalPages - 1}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm flex items-center gap-1"
-                      >
-                        Next
-                        <ChevronRight size={16} />
-                      </button>
+                        <option value="active">Active</option>
+                        <option value="maintenance">Maintenance</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
                     </div>
                   </div>
-                )}
-              </>
-            )}
+
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10 space-y-3">
+                    <p className="text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 text-orange-400">
+                      <User size={14} />
+                      Staff Assignments
+                    </p>
+
+                    <div>
+                      <label className="text-white/60 text-xs block mb-1">Assigned Driver</label>
+                      <select
+                        value={busFormData.driver_id}
+                        onChange={(e) => setBusFormData({ ...busFormData, driver_id: e.target.value })}
+                        className="w-full bg-gray-800 border border-white/15 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-orange-500 cursor-pointer"
+                      >
+                        <option value="">No Driver Assigned</option>
+                        {drivers.map(driver => (
+                          <option key={driver.id} value={driver.id}>
+                            {driver.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-white/60 text-xs block mb-1">Assigned Conductor</label>
+                      <select
+                        value={busFormData.conductor_id}
+                        onChange={(e) => setBusFormData({ ...busFormData, conductor_id: e.target.value })}
+                        className="w-full bg-gray-800 border border-white/15 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-orange-500 cursor-pointer"
+                      >
+                        <option value="">No Conductor Assigned</option>
+                        {conductors.map(conductor => (
+                          <option key={conductor.id} value={conductor.id}>
+                            {conductor.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddBusModal(false);
+                    setEditingBus(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={busSaving}
+                  className="px-5 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-orange-500/20 flex items-center gap-1.5"
+                >
+                  {busSaving && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  <span>{editingBus ? 'Update Bus' : 'Add Bus to Fleet'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* Comprehensive Trip Details & Video Playback Modal */}
+      {/* ── MODAL 2: COMPREHENSIVE TRIP DETAILS & VIDEO PLAYBACK ────────────── */}
       {selectedTrip && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
           <div className="glass-card rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden border border-white/15 flex flex-col my-auto shadow-2xl">
@@ -1007,7 +1671,7 @@ export default function TripManagement() {
               </button>
             </div>
 
-            {/* Modal Scrollable Content */}
+            {/* Modal Content */}
             <div className="p-4 sm:p-6 overflow-y-auto space-y-6 max-h-[calc(92vh-80px)]">
               {detailsLoading ? (
                 <div className="text-center py-16">
@@ -1016,7 +1680,7 @@ export default function TripManagement() {
                 </div>
               ) : (
                 <>
-                  {/* ──────────────── Video Section: Player + Segments List ──────────────── */}
+                  {/* Video Section: Player + Segments List */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
                     {/* Left: Video Player Feed */}
                     <div className="space-y-2">
@@ -1191,7 +1855,6 @@ export default function TripManagement() {
                             ))}
                           </div>
 
-                          {/* Video Segments Pagination */}
                           {Math.ceil(tripVideoRecordings.length / 3) > 1 && (
                             <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs">
                               <span className="text-white/40 text-[11px]">
@@ -1202,7 +1865,6 @@ export default function TripManagement() {
                                   onClick={() => setModalVideoPage(p => Math.max(p - 1, 1))}
                                   disabled={modalVideoPage === 1}
                                   className="p-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
-                                  title="Previous segments"
                                 >
                                   <ChevronLeft size={13} />
                                 </button>
@@ -1213,7 +1875,6 @@ export default function TripManagement() {
                                   onClick={() => setModalVideoPage(p => Math.min(p + 1, Math.ceil(tripVideoRecordings.length / 3)))}
                                   disabled={modalVideoPage === Math.ceil(tripVideoRecordings.length / 3)}
                                   className="p-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
-                                  title="Next segments"
                                 >
                                   <ChevronRight size={13} />
                                 </button>
@@ -1230,7 +1891,7 @@ export default function TripManagement() {
                     </div>
                   </div>
 
-                  {/* ──────────────── Trip Telemetry & Operations Breakdown ──────────────── */}
+                  {/* Trip Telemetry & Operations Breakdown */}
                   <div className="glass-card p-4 rounded-xl border border-white/10">
                     <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
                       <Bus className="text-orange-400" size={16} />
@@ -1256,12 +1917,12 @@ export default function TripManagement() {
                         </span>
                       </div>
                       <div className="bg-white/5 p-3 rounded-lg">
-                        <p className="text-white/50 text-[11px]">Conductor</p>
-                        <p className="text-white font-medium mt-0.5">{selectedTrip.conductor?.full_name || '—'}</p>
+                        <p className="text-white/50 text-[11px]">Driver</p>
+                        <p className="text-white font-medium mt-0.5">{selectedTrip.driver?.full_name || 'Unassigned'}</p>
                       </div>
                       <div className="bg-white/5 p-3 rounded-lg">
-                        <p className="text-white/50 text-[11px]">Driver</p>
-                        <p className="text-white font-medium mt-0.5">{selectedTrip.driver?.full_name || '—'}</p>
+                        <p className="text-white/50 text-[11px]">Conductor</p>
+                        <p className="text-white font-medium mt-0.5">{selectedTrip.conductor?.full_name || 'Unassigned'}</p>
                       </div>
                       <div className="bg-white/5 p-3 rounded-lg">
                         <p className="text-white/50 text-[11px]">Passengers Count</p>
@@ -1279,9 +1940,8 @@ export default function TripManagement() {
                     </div>
                   </div>
 
-                  {/* ──────────────── Transactions, Irregularities & Alerts ──────────────── */}
+                  {/* Transactions, Irregularities & Alerts */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Transactions */}
                     <div className="glass-card p-4 rounded-xl border border-white/10 space-y-2">
                       <h3 className="text-sm font-bold text-white flex items-center gap-2">
                         <Receipt className="text-emerald-400" size={16} />
@@ -1304,7 +1964,6 @@ export default function TripManagement() {
                       )}
                     </div>
 
-                    {/* Irregularities & Anomalies */}
                     <div className="glass-card p-4 rounded-xl border border-white/10 space-y-2">
                       <h3 className="text-sm font-bold text-white flex items-center gap-2">
                         <AlertTriangle className="text-amber-400" size={16} />

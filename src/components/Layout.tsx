@@ -106,17 +106,22 @@ const Header = ({ onMenuClick }: { onMenuClick: () => void }) => {
     <header className="glass-card h-16 flex items-center justify-between px-4 lg:px-6 mb-6">
       <button
         onClick={onMenuClick}
-        className="lg:hidden text-white hover:text-orange-400 transition-colors"
+        className="lg:hidden text-white hover:text-orange-400 transition-colors p-1.5 -ml-1.5 rounded-lg hover:bg-white/10"
+        aria-label="Open menu"
       >
         <Menu size={24} />
       </button>
-      <div className="flex items-center gap-4">
-        <div className="text-right hidden sm:block">
-          <p className="text-white font-medium">Operations Center</p>
-          <p className="text-white/60 text-sm">OMANFORTSCO</p>
+      <div className="flex items-center gap-2.5 sm:gap-4 ml-auto">
+        <div className="text-right">
+          <p className="text-white font-semibold text-xs sm:text-sm md:text-base leading-tight">
+            Operations Center
+          </p>
+          <p className="text-white/60 text-[10px] sm:text-xs font-medium tracking-wide">
+            OMANFORTSCO
+          </p>
         </div>
-        <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
-          <User className="text-white" size={20} />
+        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-md shadow-orange-500/20">
+          <User className="text-white w-4 h-4 sm:w-5 sm:h-5" />
         </div>
       </div>
     </header>

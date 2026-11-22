@@ -55,6 +55,7 @@ function App() {
             >
               <Route index element={<Dashboard />} />
               <Route path="trips" element={<TripManagement />} />
+              <Route path="buses" element={<TripManagement defaultTab="fleet" />} />
               <Route path="trip-history" element={<TripHistory />} />
               <Route path="fare-matrix" element={<FareMatrix />} />
               <Route path="transactions" element={<Transactions />} />
